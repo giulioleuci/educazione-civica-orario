@@ -1,100 +1,65 @@
-# Generatore Sostituzioni per un Calendario di Educazione Civica
+# Generatore di Orari per l'Educazione Civica
 
-Un algoritmo genetico per generare calendari ottimali di educazione civica per le scuole. Questo progetto (e questo README) è stato sviluppato con l'assistenza di strumenti di AI generativa (specialmente GPT-o1 Preview).
+Questa è un'applicazione web single-page (SPA) interamente client-side che permette di generare un calendario ottimizzato per le sostituzioni di educazione civica. L'applicazione utilizza un algoritmo genetico scritto in Python, eseguito direttamente nel browser tramite WebAssembly (Pyodide) e Web Workers per non bloccare l'interfaccia utente.
 
-## Panoramica
+## Stack Tecnologico
 
-Questo script genera un calendario di sostituzioni per l'educazione civica, con l'obiettivo di:
-- Distribuire equamente le ore di insegnamento tra docenti e classi
-- Garantire che ogni classe raggiunga le ore richieste di educazione civica
-- Rispettare la disponibilità dei docenti e le chiusure della scuola
-- Mantenere massimo un'ora di civica a settimana per classe
+-   **Frontend Framework:** React (con Vite)
+-   **Linguaggio:** TypeScript
+-   **UI Components:** shadcn/ui
+-   **Styling:** Tailwind CSS
+-   **Esecuzione Python:** Pyodide
+-   **Concorrenza:** Web Workers
 
-## Requisiti
+## Architettura
 
-- Python 3.8+
-- pandas
-- numpy
-- openpyxl
+L'applicazione è composta da tre parti principali:
 
-Installazione dipendenze:
+1.  **Thread Principale (UI):** Gestisce l'interfaccia utente, costruita con React. Raccoglie i file di input e i parametri dall'utente.
+2.  **Web Worker:** Un thread separato che gestisce i calcoli pesanti. Al suo interno viene inizializzato Pyodide.
+3.  **Pyodide:** Un port di CPython in WebAssembly che esegue lo script dell'algoritmo genetico con le sue dipendenze (`pandas`, `numpy`, `openpyxl`).
+
+Il flusso di comunicazione è il seguente:
+-   L'utente clicca "Genera Calendario" sull'interfaccia.
+-   Il thread principale invia i file (come `Uint8Array`) e i parametri al Web Worker.
+-   Il Web Worker carica lo script Python, imposta una callback di progresso e avvia l'algoritmo.
+-   Lo script Python, durante l'esecuzione, chiama la funzione di callback per inviare aggiornamenti sul progresso al Worker, che a sua volta li inoltra al thread principale.
+-   Al termine, il Worker invia i file di output (generati in memoria) al thread principale.
+-   L'interfaccia mostra i link per il download dei risultati.
+
+## Istruzioni per l'Uso
+
+### Prerequisiti
+
+-   Node.js (versione 18 o superiore)
+-   npm
+
+### 1. Installazione delle Dipendenze
+
+Clona il repository e installa le dipendenze necessarie:
+
 ```bash
-pip install pandas numpy openpyxl
+npm install
 ```
 
-## File di Input
+**Nota:** A causa di una limitazione nell'ambiente di sviluppo di questo agente, la cartella `node_modules` potrebbe non essere creata localmente. Se i comandi successivi falliscono, potrebbe essere necessario eseguire `npm install` in un ambiente Node.js standard.
 
-Posizionare questi file CSV nella cartella dello script:
+### 2. Avviare il Server di Sviluppo
 
-1. `classes.csv`: Orari delle classi con assegnazione docenti
-   ```
-   CLASSE,DOC LUN,DOC MAR,DOC MER,DOC GIO,DOC VEN,DOC SAB
-   1SA,Docente1;Docente2...,...
-   ```
+Per avviare l'applicazione in modalità sviluppo (con hot-reloading):
 
-2. `civics_teachers.csv`: Docenti di educazione civica e loro classi assegnate
-   ```
-   DOCENTE,CLASSI
-   NomeDocente,Classe1;Classe2;Classe3
-   ```
+```bash
+npm run dev
+```
 
-3. `availability.csv`: Disponibilità oraria dei docenti di civica (se disponibile è `DISPOS`)
-   ```
-   DOCENTE,LUN,MAR,MER,GIO,VEN,SAB
-   NomeDocente,DISPOS;NO;DISPOS...,... 
-   ```
+Apri il browser all'indirizzo indicato (solitamente `http://localhost:5173`).
 
-4. `closures.csv`: Date di chiusura della scuola
-   ```
-   INIZIO,FINE,DESCRIZIONE
-   21/12/2024,06/01/2025,Vacanze di Natale
-   ```
+### 3. Creare la Build di Produzione
 
-## Utilizzo
+Per creare una build ottimizzata per il deployment:
 
-1. Configurare i parametri nello script:
-   ```python
-   generator = CalendarioGenerator(
-       data_inizio_str='15/10/2024',
-       data_fine_str='10/06/2025',
-       ore_tot_civics=30,
-       cartella_output="CALENDARIO_GENERATO",
-       num_generazioni=400,
-       popolazione_size=500
-   )
-   ```
+```bash
+npm run build
+```
 
-2. Eseguire lo script:
-   ```bash
-   python3 calendario-ed-civ-generator.py
-   ```
-
-## Output
-
-Lo script genera nella cartella di output specificata:
-- `calendar.csv`: Calendario completo con date, classi e docenti
-- `teachersLost.csv`: Statistiche sulle ore "perse" per docente
-- `orario_classi.xlsx`: Sintesi settimanale per classe
-- `orario_docenti.xlsx`: Vista settimanale per docente
-
-Inoltre, ogni generazione crea una sottocartella con risultati intermedi.
-
-## Dettagli Implementativi
-
-Il calendario viene generato utilizzando un algoritmo genetico che:
-1. Crea una popolazione iniziale usando approcci greedy, batch e random
-2. Evolve le soluzioni attraverso crossover e mutazione
-3. Valuta il fitness basandosi su metriche di qualità del calendario
-4. Implementa early stopping quando non vengono trovati miglioramenti
-
-## Ottimizzazione Prestazioni
-
-Parametri regolabili per l'ottimizzazione:
-- `num_cores`: Numero di core CPU da utilizzare
-- `popolazione_size`: Dimensione della popolazione per generazione
-- `probabilita_mutazione`: Probabilità di mutazione
-- `num_generazioni`: Numero massimo di generazioni da eseguire
-
-## Licenza
-
-GNU GPL - Vedere il file LICENSE per i dettagli
+I file statici verranno generati nella cartella `dist/`. Questi file possono essere deployati su qualsiasi servizio di hosting statico (es. Netlify, Vercel, GitHub Pages).
