@@ -46,7 +46,23 @@ import logging
 # Configura il logger per informazioni sull'esecuzione
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def _sanitize_output_path(path, default="CALENDARIO_GENERATO"):
+    """Sanitizza il percorso di output per prevenire Path Traversal."""
+    if not path:
+        return default
+
+    path = os.path.normpath(path)
+    if os.path.isabs(path) or path.startswith(".."):
+        path = os.path.basename(path)
+
+    if not path or path == ".":
+        return default
+    return path
+
 def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output):
+    # Sanitize cartella_output to prevent path traversal
+    cartella_output = _sanitize_output_path(cartella_output)
+
     # Questa funzione genera due file Excel:
     # 1. orario_classi.xlsx: un foglio per ogni classe, con le sostituzioni settimanali
     # 2. orario_docenti.xlsx: un foglio per ogni docente, con le ore settimanali su righe
@@ -280,7 +296,8 @@ class CalendarioGenerator:
         self.data_inizio_str = data_inizio_str
         self.data_fine_str = data_fine_str
         self.ore_tot_civics = ore_tot_civics
-        self.cartella_output = cartella_output
+        # Sanitize cartella_output to prevent path traversal
+        self.cartella_output = _sanitize_output_path(cartella_output)
         self.num_generazioni = num_generazioni
         self.early_stopping_n = early_stopping_n
         self.popolazione_size = popolazione_size
