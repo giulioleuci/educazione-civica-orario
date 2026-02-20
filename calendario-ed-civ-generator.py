@@ -141,7 +141,6 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
         docente_entries = [entry for entry in calendario if entry['DOCENTE_CIVICS'] == nome_docente]
 
         # Struttura dati per salvare le lezioni per settimana, giorno, ora
-        from collections import defaultdict
         orari_settimanali = defaultdict(lambda: defaultdict(lambda: defaultdict(str)))
 
         # Riempimento delle strutture con le ore del docente
@@ -650,7 +649,6 @@ class CalendarioGenerator:
     def genera_individuo_base(self, strategy='random'):
         # Genera un individuo con la strategia indicata (greedy, batch, random)
         individuo = {}
-        from collections import defaultdict
         ore_per_classe = defaultdict(int)
         ore_per_docente_data = defaultdict(lambda: defaultdict(int))
         ore_settimanali_classe = defaultdict(lambda: defaultdict(int))
@@ -741,7 +739,6 @@ class CalendarioGenerator:
     def calcola_fitness(self, individuo):
         # Calcola la fitness di un individuo, utilizzando diverse metriche
         # Minore è la fitness, migliore è l'individuo
-        from collections import defaultdict
         ore_settimanali_classe = defaultdict(lambda: defaultdict(int))
         for slot_key in individuo:
             slot_info = next(s for s in self.slot_disponibili if s['KEY'] == slot_key)
