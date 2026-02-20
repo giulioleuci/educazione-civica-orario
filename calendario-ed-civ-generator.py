@@ -141,7 +141,6 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
         docente_entries = [entry for entry in calendario if entry['DOCENTE_CIVICS'] == nome_docente]
 
         # Struttura dati per salvare le lezioni per settimana, giorno, ora
-        from collections import defaultdict
         orari_settimanali = defaultdict(lambda: defaultdict(lambda: defaultdict(str)))
 
         # Riempimento delle strutture con le ore del docente
@@ -429,6 +428,13 @@ class CalendarioGenerator:
                             }
                             self.slot_disponibili.append(slot)
 
+        # Pre-calcola lookups per ottimizzare le prestazioni
+        self.slots_by_class = defaultdict(list)
+        self.slots_by_key = {}
+        for slot in self.slot_disponibili:
+            self.slots_by_class[slot['CLASSE']].append(slot)
+            self.slots_by_key[slot['KEY']] = slot
+
         # Debug info
         print(f"Numero totale di slot disponibili: {len(self.slot_disponibili)}")
         print(f"Classi trovate: {self.classi_df['CLASSE'].tolist()}")
@@ -526,8 +532,15 @@ class CalendarioGenerator:
     def calcola_statistiche(self, calendario):
         # Calcola le statistiche per classe e docente (ore perse, totali e percentuale)
         statistiche_classi = []
+
+        # Raggruppa le voci del calendario per classe per evitare scansioni O(M) nel loop
+        entries_by_class = defaultdict(list)
+        for entry in calendario:
+            entries_by_class[entry['CLASSE']].append(entry)
+
         for classe in self.classi_df['CLASSE']:
-            slots_classe = [s for s in self.slot_disponibili if s['CLASSE'] == classe]
+            # Utilizza il lookup pre-calcolato invece della scansione O(N)
+            slots_classe = self.slots_by_class[classe]
             ore_perse_docente = defaultdict(int)
             ore_totali_docente = defaultdict(int)
 
@@ -536,11 +549,10 @@ class CalendarioGenerator:
                 docente = slot['DOCENTE_SOSTITUITO']
                 ore_totali_docente[docente] += 1
 
-            # Calcolo delle ore perse assegnate ad un docente di civics
-            for entry in calendario:
-                if entry['CLASSE'] == classe:
-                    docente = entry['DOCENTE_SOSTITUITO']
-                    ore_perse_docente[docente] += 1
+            # Calcolo delle ore perse assegnate ad un docente di civics utilizzando il raggruppamento
+            for entry in entries_by_class[classe]:
+                docente = entry['DOCENTE_SOSTITUITO']
+                ore_perse_docente[docente] += 1
 
             # Calcolo percentuali e costruzione del dict da aggiungere al DataFrame
             for docente in ore_totali_docente:
@@ -627,7 +639,7 @@ class CalendarioGenerator:
         # Crea la lista di dizionari rappresentante il calendario dall'individuo
         calendario = []
         for slot_key, docente_civics in individuo.items():
-            slot_info = next(s for s in self.slot_disponibili if s['KEY'] == slot_key)
+            slot_info = self.slots_by_key[slot_key]
             calendario.append({
                 'CLASSE': slot_info['CLASSE'],
                 'DATA': slot_info['DATA'].strftime('%d/%m/%Y'),
@@ -650,7 +662,6 @@ class CalendarioGenerator:
     def genera_individuo_base(self, strategy='random'):
         # Genera un individuo con la strategia indicata (greedy, batch, random)
         individuo = {}
-        from collections import defaultdict
         ore_per_classe = defaultdict(int)
         ore_per_docente_data = defaultdict(lambda: defaultdict(int))
         ore_settimanali_classe = defaultdict(lambda: defaultdict(int))
@@ -721,7 +732,7 @@ class CalendarioGenerator:
         ore_settimanali_classe = defaultdict(lambda: defaultdict(int))
 
         for slot_key in individuo:
-            slot_info = next(s for s in self.slot_disponibili if s['KEY'] == slot_key)
+            slot_info = self.slots_by_key[slot_key]
             nome_classe = slot_info['CLASSE']
             data = slot_info['DATA']
             settimana = data.isocalendar()[1]
@@ -741,14 +752,21 @@ class CalendarioGenerator:
     def calcola_fitness(self, individuo):
         # Calcola la fitness di un individuo, utilizzando diverse metriche
         # Minore è la fitness, migliore è l'individuo
-        from collections import defaultdict
         ore_settimanali_classe = defaultdict(lambda: defaultdict(int))
+
+        # Pre-calcola le ore perse per ogni classe e docente in un unico passaggio sull'individuo
+        # Questo evita scansioni multiple di individuo nel loop delle classi
+        ore_perse_per_classe_docente = defaultdict(lambda: defaultdict(int))
+
         for slot_key in individuo:
-            slot_info = next(s for s in self.slot_disponibili if s['KEY'] == slot_key)
+            slot_info = self.slots_by_key[slot_key]
             nome_classe = slot_info['CLASSE']
             data = slot_info['DATA']
             settimana = data.isocalendar()[1]
             ore_settimanali_classe[nome_classe][settimana] += 1
+
+            docente_sostituito = slot_info['DOCENTE_SOSTITUITO']
+            ore_perse_per_classe_docente[nome_classe][docente_sostituito] += 1
 
         total_deviation = 0
         for classe in self.classi_df['CLASSE']:
@@ -770,19 +788,16 @@ class CalendarioGenerator:
         low_intensity_penalty_civics_teacher = 0.5
 
         for classe in self.classi_df['CLASSE']:
-            slots_classe = [s for s in self.slot_disponibili if s['CLASSE'] == classe]
-            ore_perse_docente = defaultdict(int)
+            # Utilizza il lookup pre-calcolato invece della scansione O(N)
+            slots_classe = self.slots_by_class[classe]
             ore_totali_docente = defaultdict(int)
 
             for slot in slots_classe:
                 docente = slot['DOCENTE_SOSTITUITO']
                 ore_totali_docente[docente] += 1
 
-            for slot_key in individuo:
-                slot_info = next(s for s in self.slot_disponibili if s['KEY'] == slot_key)
-                if slot_info['CLASSE'] == classe:
-                    docente = slot_info['DOCENTE_SOSTITUITO']
-                    ore_perse_docente[docente] += 1
+            # Recupera le ore perse pre-calcolate per questa classe
+            ore_perse_docente = ore_perse_per_classe_docente[classe]
 
             total_teaching_hours = sum(ore_totali_docente.values())
             P = (self.ore_tot_civics / total_teaching_hours) * 100 if total_teaching_hours > 0 else 0
@@ -863,7 +878,7 @@ class CalendarioGenerator:
         keys = list(individuo.keys())
         for key in keys:
             if random.random() < self.probabilita_mutazione:
-                slot_info = next(s for s in self.slot_disponibili if s['KEY'] == key)
+                slot_info = self.slots_by_key[key]
                 nome_classe = slot_info['CLASSE']
                 data = slot_info['DATA']
                 settimana = data.isocalendar()[1]
