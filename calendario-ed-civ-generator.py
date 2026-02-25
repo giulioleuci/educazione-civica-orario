@@ -415,7 +415,7 @@ class CalendarioGenerator:
 
         # Identificazione docenti di civics anche in altre materie
         logging.info("Identificazione dei docenti di civics che insegnano altre materie nelle classi...")
-        self.docenti_civics_organico = defaultdict(list)
+        self.docenti_civics_organico = defaultdict(set)
         for _, row in self.classi_df.iterrows():
             nome_classe = row['CLASSE']
             for giorno in self.giorni_settimana:
@@ -423,7 +423,7 @@ class CalendarioGenerator:
                 lista_docenti = row[colonna_doc].split(';')
                 for docente in lista_docenti:
                     if docente in self.docenti_civics_classi:
-                        self.docenti_civics_organico[nome_classe].append(docente)
+                        self.docenti_civics_organico[nome_classe].add(docente)
 
         # Generazione degli slot disponibili (classe, data, giorno, ora, docente_sostituito)
         logging.info("Generazione degli slot disponibili...")

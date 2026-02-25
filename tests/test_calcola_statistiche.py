@@ -2,11 +2,16 @@
 import pytest
 from generator_mod import CalendarioGenerator
 
+from collections import defaultdict
+
 class MockGenerator(CalendarioGenerator):
     def __init__(self, classi_df, slot_disponibili):
         # Bypass the original __init__ to avoid file loading and initialization logic
         self.classi_df = classi_df
         self.slot_disponibili = slot_disponibili
+        self.slots_by_class = defaultdict(list)
+        for slot in self.slot_disponibili:
+            self.slots_by_class[slot['CLASSE']].append(slot)
 
 def test_calcola_statistiche_basic():
     # Setup
