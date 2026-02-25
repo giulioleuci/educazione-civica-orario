@@ -59,6 +59,25 @@ def _sanitize_output_path(path, default="CALENDARIO_GENERATO"):
         return default
     return path
 
+def _sanitize_for_excel(df):
+    """
+    Sanitizza le stringhe nel DataFrame per prevenire Excel formula injection.
+    Aggiunge un apice singolo all'inizio di ogni cella che inizia con '=', '+', '-', o '@'.
+    """
+    if df.empty:
+        return df
+
+    def sanitize_val(val):
+        if isinstance(val, str) and val and val[0] in ('=', '+', '-', '@'):
+            return f"'{val}"
+        return val
+
+    # In pandas >= 2.1.0, applymap è deprecato in favore di map.
+    # Usiamo map se disponibile, altrimenti applymap.
+    if hasattr(df, 'map'):
+        return df.map(sanitize_val)
+    return df.applymap(sanitize_val)
+
 def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output):
     # Sanitize cartella_output to prevent path traversal
     cartella_output = _sanitize_output_path(cartella_output)
@@ -115,6 +134,7 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
 
         if class_data:
             df = pd.DataFrame(class_data)
+            df = _sanitize_for_excel(df)
             df.to_excel(writer_classi, sheet_name=nome_classe, index=False)
 
             ws = writer_classi.sheets[nome_classe]
@@ -187,6 +207,7 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
         # Scrittura su file Excel
         if all_tables:
             final_df = pd.concat(all_tables)
+            final_df = _sanitize_for_excel(final_df)
             final_df.to_excel(writer_docenti, sheet_name=nome_docente, index=False)
 
             ws = writer_docenti.sheets[nome_docente]
@@ -513,11 +534,13 @@ class CalendarioGenerator:
 
             # Salva calendar.csv
             calendario_df = pd.DataFrame(best_calendario)
+            calendario_df = _sanitize_for_excel(calendario_df)
             calendario_df.to_csv(os.path.join(generation_dir, 'calendar.csv'), index=False)
 
             # Calcola e salva teachersLost.csv per questa generazione
             statistiche_classi = self.calcola_statistiche(best_calendario)
             statistiche_df = pd.DataFrame(statistiche_classi)
+            statistiche_df = _sanitize_for_excel(statistiche_df)
             statistiche_df.to_csv(os.path.join(generation_dir, 'teachersLost.csv'), index=False)
 
             # Genera i file Excel anche per la generazione intermedia
@@ -535,11 +558,13 @@ class CalendarioGenerator:
 
         logging.info("Salvataggio del calendario finale in calendar.csv...")
         calendario_df = pd.DataFrame(calendario)
+        calendario_df = _sanitize_for_excel(calendario_df)
         calendario_df.to_csv(os.path.join(self.cartella_output, 'calendar.csv'), index=False)
 
         logging.info("Salvataggio delle statistiche finali in teachersLost.csv...")
         statistiche_classi = self.calcola_statistiche(calendario)
         statistiche_df = pd.DataFrame(statistiche_classi)
+        statistiche_df = _sanitize_for_excel(statistiche_df)
         statistiche_df.to_csv(os.path.join(self.cartella_output, 'teachersLost.csv'), index=False)
 
         logging.info("Generazione dei file Excel finali...")
