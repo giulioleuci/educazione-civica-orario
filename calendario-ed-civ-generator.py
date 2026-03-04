@@ -309,7 +309,8 @@ class CalendarioGenerator:
         probabilita_crossover=0.8,
         elitismo_rate=0.01,
         num_cores=4,
-        allow_teacher_replace_self=True
+        allow_teacher_replace_self=True,
+        save_interval=50
     ):
         # Inizializzazione dei parametri
         self.num_varianti = num_varianti
@@ -326,6 +327,7 @@ class CalendarioGenerator:
         self.elitismo_rate = elitismo_rate
         self.num_cores = num_cores
         self.allow_teacher_replace_self = allow_teacher_replace_self
+        self.save_interval = save_interval
 
         # Backup degli hyperparams di base
         self.base_probabilita_mutazione = probabilita_mutazione
@@ -356,6 +358,7 @@ class CalendarioGenerator:
         print(f"elitismo_rate = {self.elitismo_rate}")
         print(f"num_cores = {self.num_cores}")
         print(f"allow_teacher_replace_self = {self.allow_teacher_replace_self}")
+        print(f"save_interval = {self.save_interval}")
 
         # Caricamento dati e inizializzazione variabili
         self.load_data()
@@ -526,25 +529,26 @@ class CalendarioGenerator:
             # -------------------------------------------
             # Salvataggio dei risultati della generazione corrente
             # -------------------------------------------
-            generation_dir = os.path.join(self.cartella_output, f"generation_{generazione+1}")
-            os.makedirs(generation_dir, exist_ok=True)
+            if self.save_interval > 0 and (generazione + 1) % self.save_interval == 0:
+                generation_dir = os.path.join(self.cartella_output, f"generation_{generazione+1}")
+                os.makedirs(generation_dir, exist_ok=True)
 
-            best_individual = self.population[0]['individuo']
-            best_calendario = self.create_calendario(best_individual)
+                best_individual = self.population[0]['individuo']
+                best_calendario = self.create_calendario(best_individual)
 
-            # Salva calendar.csv
-            calendario_df = pd.DataFrame(best_calendario)
-            calendario_df = _sanitize_for_excel(calendario_df)
-            calendario_df.to_csv(os.path.join(generation_dir, 'calendar.csv'), index=False)
+                # Salva calendar.csv
+                calendario_df = pd.DataFrame(best_calendario)
+                calendario_df = _sanitize_for_excel(calendario_df)
+                calendario_df.to_csv(os.path.join(generation_dir, 'calendar.csv'), index=False)
 
-            # Calcola e salva teachersLost.csv per questa generazione
-            statistiche_classi = self.calcola_statistiche(best_calendario)
-            statistiche_df = pd.DataFrame(statistiche_classi)
-            statistiche_df = _sanitize_for_excel(statistiche_df)
-            statistiche_df.to_csv(os.path.join(generation_dir, 'teachersLost.csv'), index=False)
+                # Calcola e salva teachersLost.csv per questa generazione
+                statistiche_classi = self.calcola_statistiche(best_calendario)
+                statistiche_df = pd.DataFrame(statistiche_classi)
+                statistiche_df = _sanitize_for_excel(statistiche_df)
+                statistiche_df.to_csv(os.path.join(generation_dir, 'teachersLost.csv'), index=False)
 
-            # Genera i file Excel anche per la generazione intermedia
-            genera_file_excel(best_calendario, self.classi_df, self.docenti_civics_df, generation_dir)
+                # Genera i file Excel anche per la generazione intermedia
+                genera_file_excel(best_calendario, self.classi_df, self.docenti_civics_df, generation_dir)
 
         logging.info("Migliore individuo trovato con fitness: {}".format(migliore_fitness))
 
