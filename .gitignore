@@ -1,0 +1,6 @@
+
+CALENDARIO_GENERATO/
+*.csv
+__pycache__/
+*.pyc
+.pytest_cache/
