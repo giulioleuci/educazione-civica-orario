@@ -1,7 +1,34 @@
 
 import pytest
+import os
 from unittest.mock import MagicMock
-from generator_mod import _sanitize_for_excel
+from generator_mod import _sanitize_for_excel, _sanitize_output_path
+
+def test_sanitize_output_path():
+    # Happy paths
+    assert _sanitize_output_path("output") == "output"
+    assert _sanitize_output_path("my_folder/sub") == os.path.normpath("my_folder/sub")
+
+    # Edge cases
+    assert _sanitize_output_path("") == "CALENDARIO_GENERATO"
+    assert _sanitize_output_path(None) == "CALENDARIO_GENERATO"
+    assert _sanitize_output_path(".") == "CALENDARIO_GENERATO"
+    assert _sanitize_output_path("./") == "CALENDARIO_GENERATO"
+
+    # Security scenarios: Absolute paths
+    # os.path.basename will be returned
+    assert _sanitize_output_path("/absolute/path") == "path"
+    assert _sanitize_output_path("C:\\Windows") in ["Windows", "C:\\Windows"] # depends on OS, but basename is the goal
+    # Actually, on Linux, C:\Windows is not absolute.
+
+    # Security scenarios: Path traversal
+    assert _sanitize_output_path("../traversal") == "traversal"
+    assert _sanitize_output_path("../../etc/passwd") == "passwd"
+    assert _sanitize_output_path("subdir/../../traversal") == "traversal"
+
+    # Cases that resolve to empty/dot after basename
+    assert _sanitize_output_path("..") == "CALENDARIO_GENERATO"
+    assert _sanitize_output_path("/") == "CALENDARIO_GENERATO"
 
 def test_sanitize_val_logic():
     # Extract the logic by passing a mock that has the expected behavior
