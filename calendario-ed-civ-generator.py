@@ -249,50 +249,6 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
     writer_docenti.close()
 
 
-class PatternMemory:
-    # Classe per gestire pattern di successo e fallimento, utile per memorizzare
-    # combinazioni particolari di assegnazione nella popolazione
-    def __init__(self):
-        self.success_patterns = defaultdict(int)
-        self.failure_patterns = defaultdict(int)
-        self.max_memory = 1000  # Max pattern memorizzabili
-
-    def extract_patterns(self, individuo):
-        # Estrae i pattern dall'individuo
-        patterns = []
-        for slot_key, docente in individuo.items():
-            patterns.append((slot_key, docente))
-        return patterns
-
-    def update_patterns(self, individuo, success=True):
-        # Aggiorna i pattern di successo/fallimento in base all'esito
-        patterns = self.extract_patterns(individuo)
-        for pattern in patterns:
-            if success:
-                self.success_patterns[pattern] += 1
-            else:
-                self.failure_patterns[pattern] += 1
-
-        # Rimozione graduale dei pattern troppo vecchi/meno rilevanti
-        if len(self.success_patterns) > self.max_memory:
-            self._age_patterns(self.success_patterns)
-        if len(self.failure_patterns) > self.max_memory:
-            self._age_patterns(self.failure_patterns)
-
-    def _age_patterns(self, pattern_dict):
-        # Diminuisce il "peso" di ogni pattern, eliminando quelli irrilevanti
-        for pattern in list(pattern_dict.keys()):
-            pattern_dict[pattern] -= 1
-            if pattern_dict[pattern] <= 0:
-                del pattern_dict[pattern]
-
-    def get_pattern_score(self, pattern):
-        # Calcolo di un punteggio pattern: successi - fallimenti
-        success = self.success_patterns.get(pattern, 0)
-        failure = self.failure_patterns.get(pattern, 0)
-        return success - failure
-
-
 class CalendarioGenerator:
     # Classe principale che gestisce l'esecuzione dell'algoritmo genetico
     def __init__(
@@ -340,8 +296,6 @@ class CalendarioGenerator:
             'probabilita_crossover': self.probabilita_crossover,
             'elitismo_rate': self.elitismo_rate
         }
-
-        self.pattern_memory = PatternMemory()
 
         # Stampa parametri di inizializzazione
         print("Parametri iniziali:")
