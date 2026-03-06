@@ -55,7 +55,7 @@ def _sanitize_output_path(path, default="CALENDARIO_GENERATO"):
     if os.path.isabs(path) or path.startswith(".."):
         path = os.path.basename(path)
 
-    if not path or path == ".":
+    if not path or path in (".", ".."):
         return default
     return path
 
