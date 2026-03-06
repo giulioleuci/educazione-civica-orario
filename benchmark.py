@@ -15,8 +15,14 @@ spec.loader.exec_module(calendario)
 class MockCalendarioGenerator(calendario.CalendarioGenerator):
     def __init__(self):
         self.ore_tot_civics = 30
-        self.docenti_civics_organico = defaultdict(list)
+        self.docenti_civics_organico = defaultdict(set)
         self.classi_df = pd.DataFrame({'CLASSE': [f'Class_{i}' for i in range(50)]})
+
+        for classe in self.classi_df['CLASSE']:
+            for i in range(200):
+                self.docenti_civics_organico[classe].add(f'Other_Docente_{i}')
+            self.docenti_civics_organico[classe].add('Docente_0')
+
         self.slots_by_class = defaultdict(list)
         self.slots_by_key = {}
         self.ore_totali_docente_per_classe = defaultdict(lambda: defaultdict(int))
