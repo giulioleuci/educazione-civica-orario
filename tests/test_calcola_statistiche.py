@@ -9,8 +9,10 @@ class MockGenerator(CalendarioGenerator):
         self.classi_df = classi_df
         self.slot_disponibili = slot_disponibili
         self.slots_by_class = defaultdict(list)
+        self.ore_totali_docente_per_classe = defaultdict(lambda: defaultdict(int))
         for slot in slot_disponibili:
             self.slots_by_class[slot['CLASSE']].append(slot)
+            self.ore_totali_docente_per_classe[slot['CLASSE']][slot['DOCENTE_SOSTITUITO']] += 1
 
 def test_calcola_statistiche_basic():
     # Setup
