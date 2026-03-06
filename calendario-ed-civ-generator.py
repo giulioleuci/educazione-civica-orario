@@ -289,7 +289,6 @@ class CalendarioGenerator:
         self.base_probabilita_mutazione = probabilita_mutazione
         self.base_probabilita_crossover = probabilita_crossover
         self.base_elitismo_rate = elitismo_rate
-        self.base_early_stopping_n = early_stopping_n
 
         self.hyperparams = {
             'probabilita_mutazione': self.probabilita_mutazione,
