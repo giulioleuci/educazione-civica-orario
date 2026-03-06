@@ -147,7 +147,7 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
                     try:
                         if len(str(cell.value)) > max_length:
                             max_length = len(str(cell.value))
-                    except:
+                    except (TypeError, ValueError):
                         pass
                 adjusted_width = (max_length + 2)
                 ws.column_dimensions[get_column_letter(column[0].column)].width = adjusted_width
