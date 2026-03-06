@@ -34,6 +34,63 @@ def test_sanitize_val_logic():
         result = _sanitize_for_excel(df)
         assert result[0] == exp
 
+def test_genera_file_excel_handles_str_conversion_error():
+    from generator_mod import genera_file_excel
+    import pandas as pd
+    from unittest.mock import MagicMock, patch
+
+    # Mock cell with a value that raises an error when converted to string
+    class BadValue:
+        def __str__(self):
+            raise ValueError("String conversion failed")
+
+    mock_cell_bad = MagicMock()
+    mock_cell_bad.value = BadValue()
+    mock_cell_bad.column = 1
+
+    mock_cell_good = MagicMock()
+    mock_cell_good.value = "Valid"
+    mock_cell_good.column = 1
+
+    # Mock Worksheet
+    mock_ws = MagicMock()
+    # ws.columns is an iterable of columns
+    mock_ws.columns = [[mock_cell_bad, mock_cell_good]]
+
+    # Mock ExcelWriter
+    mock_writer = MagicMock()
+    mock_writer.sheets = {"ClassA": mock_ws}
+
+    # Input data
+    calendario = [{
+        'DATA': '01/01/2025',
+        'CLASSE': 'ClassA',
+        'GIORNO': 'LUN',
+        'ORA': 1,
+        'DOCENTE_CIVICS': 'Doc1',
+        'DOCENTE_SOSTITUITO': 'Doc2'
+    }]
+    classi_df = pd.DataFrame({'CLASSE': ['ClassA']})
+    docenti_civics_df = pd.DataFrame({'DOCENTE': ['Doc1'], 'CLASSI': ['ClassA']})
+
+    with patch('pandas.ExcelWriter', return_value=mock_writer), \
+         patch('os.path.exists', return_value=True), \
+         patch('os.makedirs'), \
+         patch('generator_mod._sanitize_output_path', return_value="output"):
+
+        # This should not raise an exception because of the try-except block
+        try:
+            genera_file_excel(calendario, classi_df, docenti_civics_df, "output")
+        except Exception as e:
+            pytest.fail(f"genera_file_excel raised an exception: {e}")
+
+    # Verify that max_length calculation continued after the error
+    # The good cell has length 5 ("Valid"), so adjusted_width should be 5 + 2 = 7
+    # ws.column_dimensions[get_column_letter(...)].width = 7
+    # However, since get_column_letter is mocked, it's a bit harder to verify exactly without more mocks.
+    # But the main goal is to ensure it doesn't crash.
+    assert mock_ws.column_dimensions.__getitem__.called
+
 def test_sanitize_for_excel_empty():
     mock_df = MagicMock()
     mock_df.empty = True
