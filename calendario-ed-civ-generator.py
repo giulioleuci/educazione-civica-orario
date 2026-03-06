@@ -465,16 +465,19 @@ class CalendarioGenerator:
                                 'GIORNO': nome_giorno,
                                 'ORA': ora_idx + 1,
                                 'DOCENTE_SOSTITUITO': docente_in_classe,
-                                'KEY': f"{nome_classe}_{data.strftime('%Y%m%d')}_{ora_idx + 1}"
+                                'KEY': f"{nome_classe}_{data.strftime('%Y%m%d')}_{ora_idx + 1}",
+                                'SETTIMANA': data.isocalendar()[1]
                             }
                             self.slot_disponibili.append(slot)
 
         # Pre-calcola lookups per ottimizzare le prestazioni
         self.slots_by_class = defaultdict(list)
         self.slots_by_key = {}
+        self.ore_totali_docente_per_classe = defaultdict(lambda: defaultdict(int))
         for slot in self.slot_disponibili:
             self.slots_by_class[slot['CLASSE']].append(slot)
             self.slots_by_key[slot['KEY']] = slot
+            self.ore_totali_docente_per_classe[slot['CLASSE']][slot['DOCENTE_SOSTITUITO']] += 1
 
         # Debug info
         print(f"Numero totale di slot disponibili: {len(self.slot_disponibili)}")
@@ -586,14 +589,8 @@ class CalendarioGenerator:
 
         for classe in self.classi_df['CLASSE']:
             # Utilizza il lookup pre-calcolato invece della scansione O(N)
-            slots_classe = self.slots_by_class[classe]
             ore_perse_docente = defaultdict(int)
-            ore_totali_docente = defaultdict(int)
-
-            # Calcolo delle ore totali per docente
-            for slot in slots_classe:
-                docente = slot['DOCENTE_SOSTITUITO']
-                ore_totali_docente[docente] += 1
+            ore_totali_docente = self.ore_totali_docente_per_classe[classe]
 
             # Calcolo delle ore perse assegnate ad un docente di civics utilizzando il raggruppamento
             for entry in entries_by_class[classe]:
@@ -724,7 +721,7 @@ class CalendarioGenerator:
         for slot in slot_copia:
             nome_classe = slot['CLASSE']
             data = slot['DATA']
-            settimana = data.isocalendar()[1]
+            settimana = slot['SETTIMANA']
 
             # Controlla limite di ore totali e settimanali
             if ore_per_classe[nome_classe] >= self.ore_tot_civics:
@@ -781,7 +778,7 @@ class CalendarioGenerator:
             slot_info = self.slots_by_key[slot_key]
             nome_classe = slot_info['CLASSE']
             data = slot_info['DATA']
-            settimana = data.isocalendar()[1]
+            settimana = slot_info['SETTIMANA']
             ore_per_classe[nome_classe] += 1
             ore_settimanali_classe[nome_classe][settimana] += 1
 
@@ -808,7 +805,7 @@ class CalendarioGenerator:
             slot_info = self.slots_by_key[slot_key]
             nome_classe = slot_info['CLASSE']
             data = slot_info['DATA']
-            settimana = data.isocalendar()[1]
+            settimana = slot_info['SETTIMANA']
             ore_settimanali_classe[nome_classe][settimana] += 1
 
             docente_sostituito = slot_info['DOCENTE_SOSTITUITO']
@@ -835,12 +832,7 @@ class CalendarioGenerator:
 
         for classe in self.classi_df['CLASSE']:
             # Utilizza il lookup pre-calcolato invece della scansione O(N)
-            slots_classe = self.slots_by_class[classe]
-            ore_totali_docente = defaultdict(int)
-
-            for slot in slots_classe:
-                docente = slot['DOCENTE_SOSTITUITO']
-                ore_totali_docente[docente] += 1
+            ore_totali_docente = self.ore_totali_docente_per_classe[classe]
 
             # Recupera le ore perse pre-calcolate per questa classe
             ore_perse_docente = ore_perse_per_classe_docente[classe]
@@ -927,7 +919,7 @@ class CalendarioGenerator:
                 slot_info = self.slots_by_key[key]
                 nome_classe = slot_info['CLASSE']
                 data = slot_info['DATA']
-                settimana = data.isocalendar()[1]
+                settimana = slot_info['SETTIMANA']
                 nome_giorno = slot_info['GIORNO']
                 ora = slot_info['ORA']
                 docente_sostituito = slot_info['DOCENTE_SOSTITUITO']
