@@ -462,6 +462,7 @@ class CalendarioGenerator:
                             slot = {
                                 'CLASSE': nome_classe,
                                 'DATA': data,
+                                'SETTIMANA': data.isocalendar()[1],
                                 'GIORNO': nome_giorno,
                                 'ORA': ora_idx + 1,
                                 'DOCENTE_SOSTITUITO': docente_in_classe,
@@ -724,7 +725,7 @@ class CalendarioGenerator:
         for slot in slot_copia:
             nome_classe = slot['CLASSE']
             data = slot['DATA']
-            settimana = data.isocalendar()[1]
+            settimana = slot['SETTIMANA']
 
             # Controlla limite di ore totali e settimanali
             if ore_per_classe[nome_classe] >= self.ore_tot_civics:
@@ -780,8 +781,7 @@ class CalendarioGenerator:
         for slot_key in individuo:
             slot_info = self.slots_by_key[slot_key]
             nome_classe = slot_info['CLASSE']
-            data = slot_info['DATA']
-            settimana = data.isocalendar()[1]
+            settimana = slot_info['SETTIMANA']
             ore_per_classe[nome_classe] += 1
             ore_settimanali_classe[nome_classe][settimana] += 1
 
@@ -807,8 +807,7 @@ class CalendarioGenerator:
         for slot_key in individuo:
             slot_info = self.slots_by_key[slot_key]
             nome_classe = slot_info['CLASSE']
-            data = slot_info['DATA']
-            settimana = data.isocalendar()[1]
+            settimana = slot_info['SETTIMANA']
             ore_settimanali_classe[nome_classe][settimana] += 1
 
             docente_sostituito = slot_info['DOCENTE_SOSTITUITO']
@@ -926,8 +925,7 @@ class CalendarioGenerator:
             if random.random() < self.probabilita_mutazione:
                 slot_info = self.slots_by_key[key]
                 nome_classe = slot_info['CLASSE']
-                data = slot_info['DATA']
-                settimana = data.isocalendar()[1]
+                settimana = slot_info['SETTIMANA']
                 nome_giorno = slot_info['GIORNO']
                 ora = slot_info['ORA']
                 docente_sostituito = slot_info['DOCENTE_SOSTITUITO']
