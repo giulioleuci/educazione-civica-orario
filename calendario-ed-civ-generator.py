@@ -68,7 +68,7 @@ def _sanitize_for_excel(df):
         return df
 
     def sanitize_val(val):
-        if isinstance(val, str) and val and val[0] in ('=', '+', '-', '@'):
+        if isinstance(val, str) and val.lstrip() and val.lstrip()[0] in ('=', '+', '-', '@'):
             return f"'{val}"
         return val
 
