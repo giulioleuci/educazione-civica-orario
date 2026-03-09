@@ -78,21 +78,18 @@ def _sanitize_for_excel(df):
         return df.map(sanitize_val)
     return df.applymap(sanitize_val)
 
-def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output):
-    # Sanitize cartella_output to prevent path traversal
-    cartella_output = _sanitize_output_path(cartella_output)
+def _get_week_range(date):
+    """Funzione per calcolare il range settimanale (lun-sab)"""
+    start = date - timedelta(days=date.weekday())  # Lunedì
+    end = start + timedelta(days=5)  # Sabato
+    return f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
 
-    # Questa funzione genera due file Excel:
-    # 1. orario_classi.xlsx: un foglio per ogni classe, con le sostituzioni settimanali
-    # 2. orario_docenti.xlsx: un foglio per ogni docente, con le ore settimanali su righe
-    # Commenti inline per guidare passo-passo
-
+def genera_orario_classi(calendario, classi_df, cartella_output):
+    """Genera il file orario_classi.xlsx: un foglio per ogni classe, con le sostituzioni settimanali"""
     from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
     from openpyxl.utils import get_column_letter
 
-    # Stili personalizzati per le celle Excel
     header_fill = PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
-    week_fill = PatternFill(start_color='E6E6FA', end_color='E6E6FA', fill_type='solid')
     thin_border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -102,20 +99,6 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
     centered_alignment = Alignment(horizontal='center', vertical='center')
     bold_font = Font(bold=True)
 
-    # Converte le date in datetime, se stringhe
-    for entry in calendario:
-        if isinstance(entry['DATA'], str):
-            entry['DATA'] = datetime.strptime(entry['DATA'], '%d/%m/%Y')
-
-    # Funzione per calcolare il range settimanale (lun-sab)
-    def get_week_range(date):
-        start = date - timedelta(days=date.weekday())  # Lunedì
-        end = start + timedelta(days=5)  # Sabato
-        return f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
-
-    # ---------------------------------------
-    # 1. Generazione orario_classi.xlsx
-    # ---------------------------------------
     writer_classi = pd.ExcelWriter(os.path.join(cartella_output, 'orario_classi.xlsx'), engine='openpyxl')
 
     # Per ogni classe, estraiamo le entries corrispondenti e creiamo un foglio
@@ -125,7 +108,7 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
         class_data = []
         for entry in sorted(class_entries, key=lambda x: x['DATA']):
             class_data.append({
-                'Settimana': get_week_range(entry['DATA']),
+                'Settimana': _get_week_range(entry['DATA']),
                 'Giorno': entry['GIORNO'],
                 'Ora': entry['ORA'],
                 'Docente Civics': entry['DOCENTE_CIVICS'],
@@ -163,9 +146,22 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
 
     writer_classi.close()
 
-    # ---------------------------------------
-    # 2. Generazione orario_docenti.xlsx
-    # ---------------------------------------
+def genera_orario_docenti(calendario, docenti_civics_df, cartella_output):
+    """Genera il file orario_docenti.xlsx: un foglio per ogni docente, con le ore settimanali su righe"""
+    from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
+    from openpyxl.utils import get_column_letter
+
+    header_fill = PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
+    week_fill = PatternFill(start_color='E6E6FA', end_color='E6E6FA', fill_type='solid')
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    centered_alignment = Alignment(horizontal='center', vertical='center')
+    bold_font = Font(bold=True)
+
     writer_docenti = pd.ExcelWriter(os.path.join(cartella_output, 'orario_docenti.xlsx'), engine='openpyxl')
 
     giorni = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB']
@@ -181,7 +177,7 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
 
         # Riempimento delle strutture con le ore del docente
         for entry in docente_entries:
-            settimana = get_week_range(entry['DATA'])
+            settimana = _get_week_range(entry['DATA'])
             giorno = entry['GIORNO']
             ora = entry['ORA']
             nome_classe = entry['CLASSE']
@@ -247,6 +243,22 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
                     row_num += 1
 
     writer_docenti.close()
+
+def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output):
+    # Sanitize cartella_output to prevent path traversal
+    cartella_output = _sanitize_output_path(cartella_output)
+
+    # Questa funzione genera due file Excel:
+    # 1. orario_classi.xlsx: un foglio per ogni classe, con le sostituzioni settimanali
+    # 2. orario_docenti.xlsx: un foglio per ogni docente, con le ore settimanali su righe
+
+    # Converte le date in datetime, se stringhe
+    for entry in calendario:
+        if isinstance(entry['DATA'], str):
+            entry['DATA'] = datetime.strptime(entry['DATA'], '%d/%m/%Y')
+
+    genera_orario_classi(calendario, classi_df, cartella_output)
+    genera_orario_docenti(calendario, docenti_civics_df, cartella_output)
 
 
 class CalendarioGenerator:
