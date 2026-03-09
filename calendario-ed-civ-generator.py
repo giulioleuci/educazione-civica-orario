@@ -346,9 +346,13 @@ class CalendarioGenerator:
         logging.info("Creazione della lista delle date scolastiche escludendo le chiusure...")
         chiusure = set()
         for _, row in self.chiusure_df.iterrows():
-            inizio = datetime.strptime(row['INIZIO'], '%d/%m/%Y')
-            fine = datetime.strptime(row['FINE'], '%d/%m/%Y')
-            chiusure.update([inizio + timedelta(days=i) for i in range((fine - inizio).days + 1)])
+            try:
+                inizio = datetime.strptime(row['INIZIO'], '%d/%m/%Y')
+                fine = datetime.strptime(row['FINE'], '%d/%m/%Y')
+                chiusure.update([inizio + timedelta(days=i) for i in range((fine - inizio).days + 1)])
+            except ValueError as e:
+                logging.warning(f"Ignorata chiusura con date non valide: INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')} - {e}")
+                continue
 
         self.date_scolastiche = []
         data_corrente = self.data_inizio
