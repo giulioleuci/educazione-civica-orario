@@ -2,7 +2,29 @@
 import pytest
 import os
 from unittest.mock import MagicMock
-from generator_mod import _sanitize_for_excel, _sanitize_output_path
+from generator_mod import _sanitize_for_excel, _sanitize_output_path, _sanitize_sheet_name
+
+def test_sanitize_sheet_name():
+    # Happy paths
+    assert _sanitize_sheet_name("Sheet1") == "Sheet1"
+    assert _sanitize_sheet_name("Class 1A") == "Class 1A"
+
+    # Truncation
+    assert _sanitize_sheet_name("ThisIsAVeryLongSheetNameThatExceedsThirtyOneCharacters") == "ThisIsAVeryLongSheetNameThatExc"
+
+    # Invalid characters removal
+    assert _sanitize_sheet_name("Sheet/Name*1?") == "SheetName1"
+    assert _sanitize_sheet_name("Invalid\\[Name]") == "InvalidName"
+    assert _sanitize_sheet_name("Docente:Mario") == "DocenteMario"
+
+    # Combination of truncation and invalid characters
+    assert _sanitize_sheet_name("A"*20 + "/" + "B"*20) == "A"*20 + "B"*11
+
+    # Empty/Fallback cases
+    assert _sanitize_sheet_name("") == "Sheet"
+    assert _sanitize_sheet_name("   ") == "Sheet"
+    assert _sanitize_sheet_name("*?[/\\]") == "Sheet"
+    assert _sanitize_sheet_name("", default="DefaultName") == "DefaultName"
 
 def test_sanitize_output_path():
     # Happy paths
