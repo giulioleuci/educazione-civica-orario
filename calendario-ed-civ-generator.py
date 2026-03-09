@@ -42,6 +42,7 @@ import os
 import random
 import multiprocessing
 import logging
+import re
 
 # Configura il logger per informazioni sull'esecuzione
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -58,6 +59,20 @@ def _sanitize_output_path(path, default="CALENDARIO_GENERATO"):
     if not path or path in (".", ".."):
         return default
     return path
+
+def _sanitize_sheet_name(name, default="Sheet"):
+    """
+    Sanitizza il nome del foglio Excel:
+    - Rimuove caratteri non validi: \\ / * ? : [ ]
+    - Trunca a 31 caratteri (limite massimo di Excel)
+    """
+    if not isinstance(name, str):
+        name = str(name)
+    # Rimuovi i caratteri non consentiti nei nomi dei fogli Excel
+    safe_name = re.sub(r'[\\/*?:\[\]]', '', name).strip()
+    # Trunca a 31 caratteri
+    safe_name = safe_name[:31]
+    return safe_name if safe_name else default
 
 def _sanitize_for_excel(df):
     """
@@ -118,9 +133,10 @@ def genera_orario_classi(calendario, classi_df, cartella_output):
         if class_data:
             df = pd.DataFrame(class_data)
             df = _sanitize_for_excel(df)
-            df.to_excel(writer_classi, sheet_name=nome_classe, index=False)
+            safe_sheet_name = _sanitize_sheet_name(nome_classe, default="Classe")
+            df.to_excel(writer_classi, sheet_name=safe_sheet_name, index=False)
 
-            ws = writer_classi.sheets[nome_classe]
+            ws = writer_classi.sheets[safe_sheet_name]
 
             # Adatta la larghezza delle colonne in base al contenuto
             for column in ws.columns:
@@ -204,9 +220,10 @@ def genera_orario_docenti(calendario, docenti_civics_df, cartella_output):
         if all_tables:
             final_df = pd.concat(all_tables)
             final_df = _sanitize_for_excel(final_df)
-            final_df.to_excel(writer_docenti, sheet_name=nome_docente, index=False)
+            safe_sheet_name = _sanitize_sheet_name(nome_docente, default="Docente")
+            final_df.to_excel(writer_docenti, sheet_name=safe_sheet_name, index=False)
 
-            ws = writer_docenti.sheets[nome_docente]
+            ws = writer_docenti.sheets[safe_sheet_name]
 
             # Imposta larghezza colonne
             for col in range(1, len(giorni) + 1):
