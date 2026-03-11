@@ -116,9 +116,14 @@ def genera_orario_classi(calendario, classi_df, cartella_output):
 
     writer_classi = pd.ExcelWriter(os.path.join(cartella_output, 'orario_classi.xlsx'), engine='openpyxl')
 
+    # Pre-raggruppamento delle voci per classe per ottimizzare la ricerca
+    calendario_per_classe = defaultdict(list)
+    for entry in calendario:
+        calendario_per_classe[entry['CLASSE']].append(entry)
+
     # Per ogni classe, estraiamo le entries corrispondenti e creiamo un foglio
     for nome_classe in classi_df['CLASSE']:
-        class_entries = [entry for entry in calendario if entry['CLASSE'] == nome_classe]
+        class_entries = calendario_per_classe.get(nome_classe, [])
 
         class_data = []
         for entry in sorted(class_entries, key=lambda x: x['DATA']):
@@ -183,10 +188,15 @@ def genera_orario_docenti(calendario, docenti_civics_df, cartella_output):
     giorni = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB']
     ore = range(1, 7)  # Ore di lezione: 1-6
 
+    # Pre-raggruppamento delle voci per docente per ottimizzare la ricerca
+    calendario_per_docente = defaultdict(list)
+    for entry in calendario:
+        calendario_per_docente[entry['DOCENTE_CIVICS']].append(entry)
+
     # Per ogni docente di civics creiamo uno sheet con la suddivisione settimanale
     for _, docente_row in docenti_civics_df.iterrows():
         nome_docente = docente_row['DOCENTE']
-        docente_entries = [entry for entry in calendario if entry['DOCENTE_CIVICS'] == nome_docente]
+        docente_entries = calendario_per_docente.get(nome_docente, [])
 
         # Struttura dati per salvare le lezioni per settimana, giorno, ora
         orari_settimanali = defaultdict(lambda: defaultdict(lambda: defaultdict(str)))
