@@ -204,3 +204,47 @@ def test_initialize_variables_handles_invalid_date():
         pass
 
     # No need to assert length if we ignore KeyError, test passes if ValueError is not raised
+
+def test_initialize_variables_prevents_uncontrolled_resource_consumption():
+    from generator_mod import CalendarioGenerator
+    import pandas as pd
+    from unittest.mock import patch, MagicMock
+    import datetime
+
+    # Initialize generator with dummy values
+    with patch.object(CalendarioGenerator, 'load_data'):
+        with patch.object(CalendarioGenerator, 'initialize_variables'):
+            generator = CalendarioGenerator(
+                data_inizio_str='01/01/2025',
+                data_fine_str='31/01/2025'
+            )
+
+    # Mock DataFrames
+    generator.classi_df = pd.DataFrame({'CLASSE': ['1A'], 'DOC LUN': ['Doc1'], 'DOC MAR': [''], 'DOC MER': [''], 'DOC GIO': [''], 'DOC VEN': [''], 'DOC SAB': ['']})
+    generator.docenti_civics_df = pd.DataFrame({'DOCENTE': ['Doc1'], 'CLASSI': ['1A']})
+    generator.disponibilita_df = pd.DataFrame({'DOCENTE': ['Doc1'], 'LUN': ['DISPOS'], 'MAR': ['NO'], 'MER': ['NO'], 'GIO': ['NO'], 'VEN': ['NO'], 'SAB': ['NO'], 'DOM': ['NO']})
+
+    # Test Case 1: Extremely large range (malicious)
+    # Test Case 2: Negative range (invalid)
+    # Test Case 3: Valid range
+    generator.chiusure_df = pd.DataFrame([
+        {'INIZIO': '01/01/2000', 'FINE': '01/01/2099'}, # Malicious: > 36000 days
+        {'INIZIO': '10/01/2025', 'FINE': '01/01/2025'}, # Invalid: fine < inizio
+        {'INIZIO': '15/01/2025', 'FINE': '16/01/2025'}  # Valid: 2 days
+    ])
+
+    # Run initialize_variables and check if warnings are logged
+    # We patch generator_mod.logging.warning to ensure we capture the calls made inside the module
+    with patch('generator_mod.logging.warning') as mock_warning:
+        try:
+            # This will process chiusure_df and might fail later due to other missing mocked data,
+            # but that's fine as long as we get past the closures processing.
+            generator.initialize_variables()
+        except Exception:
+            # Expected to fail later in initialize_variables due to incomplete mocks
+            pass
+
+        # Verify warnings were logged for the two invalid entries
+        warning_messages = [call.args[0] for call in mock_warning.call_args_list]
+        assert any("intervallo troppo lungo" in msg for msg in warning_messages)
+        assert any("data fine precedente a data inizio" in msg for msg in warning_messages)
