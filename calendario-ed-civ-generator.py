@@ -376,11 +376,30 @@ class CalendarioGenerator:
         chiusure = set()
         for _, row in self.chiusure_df.iterrows():
             try:
-                inizio = datetime.strptime(row['INIZIO'], '%d/%m/%Y')
-                fine = datetime.strptime(row['FINE'], '%d/%m/%Y')
-                chiusure.update([inizio + timedelta(days=i) for i in range((fine - inizio).days + 1)])
-            except ValueError as e:
-                logging.warning(f"Ignorata chiusura con date non valide: INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')} - {e}")
+                # Recupera date con .get() per evitare KeyError e gestisce valori mancanti
+                inizio_str = row.get('INIZIO')
+                fine_str = row.get('FINE')
+
+                if not isinstance(inizio_str, str) or not isinstance(fine_str, str):
+                    logging.warning(f"Ignorata chiusura con date mancanti o non valide: INIZIO={inizio_str}, FINE={fine_str}")
+                    continue
+
+                inizio = datetime.strptime(inizio_str, '%d/%m/%Y')
+                fine = datetime.strptime(fine_str, '%d/%m/%Y')
+
+                if fine < inizio:
+                    logging.warning(f"Ignorata chiusura con intervallo non valido (fine antecedente inizio): INIZIO={inizio_str}, FINE={fine_str}")
+                    continue
+
+                # Protezione contro intervalli eccessivamente lunghi (DoS prevention)
+                delta_giorni = (fine - inizio).days
+                if delta_giorni > 366:
+                    logging.warning(f"Ignorata chiusura con intervallo troppo lungo (> 1 anno): INIZIO={inizio_str}, FINE={fine_str}")
+                    continue
+
+                chiusure.update([inizio + timedelta(days=i) for i in range(delta_giorni + 1)])
+            except (ValueError, TypeError, KeyError) as e:
+                logging.warning(f"Errore durante il parsing della chiusura: INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')} - {e}")
                 continue
 
         self.date_scolastiche = []
