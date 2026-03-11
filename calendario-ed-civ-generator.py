@@ -378,7 +378,14 @@ class CalendarioGenerator:
             try:
                 inizio = datetime.strptime(row['INIZIO'], '%d/%m/%Y')
                 fine = datetime.strptime(row['FINE'], '%d/%m/%Y')
-                chiusure.update([inizio + timedelta(days=i) for i in range((fine - inizio).days + 1)])
+                diff_days = (fine - inizio).days
+                if diff_days < 0:
+                    logging.warning(f"Ignorata chiusura con data fine precedente a data inizio: INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')}")
+                    continue
+                if diff_days > 366:
+                    logging.warning(f"Ignorata chiusura con intervallo troppo lungo (> 366 giorni): INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')}")
+                    continue
+                chiusure.update([inizio + timedelta(days=i) for i in range(diff_days + 1)])
             except ValueError as e:
                 logging.warning(f"Ignorata chiusura con date non valide: INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')} - {e}")
                 continue
