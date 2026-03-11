@@ -614,12 +614,12 @@ class CalendarioGenerator:
         num_batch = int(0.3 * self.popolazione_size)
         num_random = self.popolazione_size - num_greedy - num_batch
 
-        with multiprocessing.Pool(processes=self.num_cores) as pool:
+        with multiprocessing.Pool(processes=self.num_cores, initializer=init_worker, initargs=(self,)) as pool:
             # Generazione con approccio greedy
             logging.info("Generazione popolazione iniziale con approccio greedy...")
             while len(self.population) < num_greedy and tentativi < max_tentativi:
                 batch_size = min(num_greedy - len(self.population), self.num_cores)
-                results = pool.map(genera_individuo_greedy_helper, [(self, None)] * batch_size)
+                results = pool.map(genera_individuo_greedy_helper, [None] * batch_size)
                 for individuo in results:
                     if individuo is not None:
                         self.population.append({'individuo': individuo})
@@ -629,7 +629,7 @@ class CalendarioGenerator:
             logging.info("Generazione popolazione iniziale con approccio per fasce...")
             while len(self.population) < num_greedy + num_batch and tentativi < max_tentativi:
                 batch_size = min(num_batch - (len(self.population) - num_greedy), self.num_cores)
-                results = pool.map(genera_individuo_batch_helper, [(self, None)] * batch_size)
+                results = pool.map(genera_individuo_batch_helper, [None] * batch_size)
                 for individuo in results:
                     if individuo is not None:
                         self.population.append({'individuo': individuo})
@@ -639,7 +639,7 @@ class CalendarioGenerator:
             logging.info("Generazione popolazione iniziale con approccio casuale...")
             while len(self.population) < self.popolazione_size and tentativi < max_tentativi:
                 batch_size = min(self.popolazione_size - len(self.population), self.num_cores)
-                results = pool.map(genera_individuo_random_helper, [(self, None)] * batch_size)
+                results = pool.map(genera_individuo_random_helper, [None] * batch_size)
                 for individuo in results:
                     if individuo is not None:
                         self.population.append({'individuo': individuo})
@@ -647,8 +647,8 @@ class CalendarioGenerator:
 
     def evaluate_population(self):
         # Calcolo della fitness per ogni individuo della popolazione in parallelo
-        with multiprocessing.Pool(processes=self.num_cores) as pool:
-            fitness_results = pool.map(calcola_fitness_helper, [(self, ind['individuo']) for ind in self.population])
+        with multiprocessing.Pool(processes=self.num_cores, initializer=init_worker, initargs=(self,)) as pool:
+            fitness_results = pool.map(calcola_fitness_helper, [ind['individuo'] for ind in self.population])
         for i, fit in enumerate(fitness_results):
             self.population[i]['fitness'] = fit
 
@@ -937,21 +937,23 @@ class CalendarioGenerator:
         return individuo
 
 
+_worker_instance = None
+
+def init_worker(instance):
+    global _worker_instance
+    _worker_instance = instance
+
 def genera_individuo_greedy_helper(args):
-    self, _ = args
-    return self.genera_individuo_greedy(_)
+    return _worker_instance.genera_individuo_greedy(args)
 
 def genera_individuo_batch_helper(args):
-    self, _ = args
-    return self.genera_individuo_batch(_)
+    return _worker_instance.genera_individuo_batch(args)
 
 def genera_individuo_random_helper(args):
-    self, _ = args
-    return self.genera_individuo_random(_)
+    return _worker_instance.genera_individuo_random(args)
 
-def calcola_fitness_helper(args):
-    self, individuo = args
-    return self.calcola_fitness(individuo)
+def calcola_fitness_helper(individuo):
+    return _worker_instance.calcola_fitness(individuo)
 
 
 if __name__ == "__main__":
