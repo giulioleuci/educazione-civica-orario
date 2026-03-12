@@ -396,6 +396,13 @@ class CalendarioGenerator:
         self._parse_disponibilita_docenti()
         self._parse_assegnazioni_docenti()
         self._identifica_docenti_civics_organico()
+
+        # Ottimizzazione: cache della lista classi
+        if hasattr(self.classi_df['CLASSE'], 'tolist'):
+            self.lista_classi = self.classi_df['CLASSE'].tolist()
+        else:
+            self.lista_classi = list(self.classi_df['CLASSE'])
+
         self._genera_slot_disponibili()
         self._precalcola_lookups()
 
@@ -484,7 +491,7 @@ class CalendarioGenerator:
         # Generazione degli slot disponibili (classe, data, giorno, ora, docente_sostituito)
         logging.info("Generazione degli slot disponibili...")
         self.slot_disponibili = []
-        for nome_classe in self.classi_df['CLASSE']:
+        for nome_classe in self.lista_classi:
             for data in self.date_scolastiche:
                 nome_giorno = self.mappa_giorni[data.weekday()]
                 if nome_giorno in self.giorni_settimana:
@@ -615,7 +622,7 @@ class CalendarioGenerator:
         for entry in calendario:
             entries_by_class[entry['CLASSE']].append(entry)
 
-        for classe in self.classi_df['CLASSE']:
+        for classe in self.lista_classi:
             # Utilizza il lookup pre-calcolato invece della scansione O(N)
             ore_perse_docente = defaultdict(int)
             ore_totali_docente = self.ore_totali_docente_per_classe[classe]
@@ -815,14 +822,14 @@ class CalendarioGenerator:
 
         # Tutte le classi devono avere esattamente ore_tot_civics ore
         if not all(ore_per_classe[nome_classe] == self.ore_tot_civics
-                   for nome_classe in self.classi_df['CLASSE']):
+                   for nome_classe in self.lista_classi):
             return False
 
         return True
 
     def _calcola_deviazione_totale(self, ore_settimanali_classe):
         total_deviation = 0
-        for classe in self.classi_df['CLASSE']:
+        for classe in self.lista_classi:
             ore_per_settimana = ore_settimanali_classe.get(classe, {})
             deviations = [max(0, ore - 1) for ore in ore_per_settimana.values()]
             total_deviation += sum(deviations)
@@ -908,7 +915,7 @@ class CalendarioGenerator:
         max_percentage_penalty = 0
         penalties_total = 0
 
-        for classe in self.classi_df['CLASSE']:
+        for classe in self.lista_classi:
             ore_perse_docente = ore_perse_per_classe_docente[classe]
             v_tot, max_p, p_tot = self._calcola_penalita_classe(classe, ore_perse_docente)
             variance_total += v_tot
