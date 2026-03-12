@@ -185,6 +185,8 @@ def test_initialize_variables_handles_invalid_date():
     import collections
     from unittest.mock import MagicMock
     generator.classi_df = pd.DataFrame({'CLASSE': ['1A'], 'DOC LUN': ['Doc1'], 'DOC MAR': [''], 'DOC MER': [''], 'DOC GIO': [''], 'DOC VEN': [''], 'DOC SAB': ['']})
+    # MockDataFrame in tests returns list for ['CLASSE'], real pandas returns Series
+    generator.classi_list = generator.classi_df['CLASSE'] if isinstance(generator.classi_df['CLASSE'], list) else generator.classi_df['CLASSE'].tolist()
     generator.docenti_civics_df = pd.DataFrame({'DOCENTE': ['Doc1'], 'CLASSI': ['1A']})
     generator.disponibilita_df = pd.DataFrame({'DOCENTE': ['Doc1'], 'LUN': ['DISPOS'], 'MAR': ['NO'], 'MER': ['NO'], 'GIO': ['NO'], 'VEN': ['NO'], 'SAB': ['NO'], 'DOM': ['NO']})
 

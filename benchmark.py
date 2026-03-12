@@ -24,8 +24,9 @@ class MockCalendarioGenerator(calendario.CalendarioGenerator):
         super().__init__(config)
         self.docenti_civics_organico = defaultdict(set)
         self.classi_df = pd.DataFrame({'CLASSE': [f'Class_{i}' for i in range(50)]})
+        self.classi_list = self.classi_df['CLASSE'].tolist()
 
-        for classe in self.classi_df['CLASSE']:
+        for classe in self.classi_list:
             for i in range(200):
                 self.docenti_civics_organico[classe].add(f'Other_Docente_{i}')
             self.docenti_civics_organico[classe].add('Docente_0')

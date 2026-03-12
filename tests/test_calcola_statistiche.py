@@ -9,6 +9,7 @@ class MockGenerator(CalendarioGenerator):
         self.classi_df = classi_df
         self.slot_disponibili = slot_disponibili
         self.slots_by_class = defaultdict(list)
+        self.classi_list = classi_df['CLASSE']
         self.ore_totali_docente_per_classe = defaultdict(lambda: defaultdict(int))
         for slot in slot_disponibili:
             self.slots_by_class[slot['CLASSE']].append(slot)
