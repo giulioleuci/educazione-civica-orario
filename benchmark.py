@@ -24,8 +24,9 @@ class MockCalendarioGenerator(calendario.CalendarioGenerator):
         super().__init__(config)
         self.docenti_civics_organico = defaultdict(set)
         self.classi_df = pd.DataFrame({'CLASSE': [f'Class_{i}' for i in range(50)]})
+        self.lista_classi = self.classi_df['CLASSE'].tolist()
 
-        for classe in self.classi_df['CLASSE']:
+        for classe in self.lista_classi:
             for i in range(200):
                 self.docenti_civics_organico[classe].add(f'Other_Docente_{i}')
             self.docenti_civics_organico[classe].add('Docente_0')
@@ -35,7 +36,7 @@ class MockCalendarioGenerator(calendario.CalendarioGenerator):
         self.ore_totali_docente_per_classe = defaultdict(lambda: defaultdict(int))
 
         self.slot_disponibili = []
-        for i, classe in enumerate(self.classi_df['CLASSE']):
+        for i, classe in enumerate(self.lista_classi):
             for d in range(200):  # 200 days
                 for ora in range(1, 6): # 5 hours
                     docente = f'Docente_{d % 10}'
