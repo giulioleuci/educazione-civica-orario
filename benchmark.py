@@ -13,8 +13,15 @@ spec.loader.exec_module(calendario)
 
 # Mock some data for the benchmark
 class MockCalendarioGenerator(calendario.CalendarioGenerator):
+    def load_data(self):
+        pass
+
+    def initialize_variables(self):
+        pass
+
     def __init__(self):
-        self.ore_tot_civics = 30
+        config = calendario.CalendarioConfig(ore_tot_civics=30)
+        super().__init__(config)
         self.docenti_civics_organico = defaultdict(set)
         self.classi_df = pd.DataFrame({'CLASSE': [f'Class_{i}' for i in range(50)]})
 

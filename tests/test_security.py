@@ -168,17 +168,18 @@ def test_sanitize_for_excel_calls_applymap_if_map_absent():
     assert mock_df.applymap.called
 
 def test_initialize_variables_handles_invalid_date():
-    from generator_mod import CalendarioGenerator
+    from generator_mod import CalendarioGenerator, CalendarioConfig
     import pandas as pd
     from unittest.mock import patch
 
     # Initialize generator with dummy values to bypass initial data load
     with patch.object(CalendarioGenerator, 'load_data'):
         with patch.object(CalendarioGenerator, 'initialize_variables'):
-            generator = CalendarioGenerator(
+            config = CalendarioConfig(
                 data_inizio_str='01/01/2025',
                 data_fine_str='31/01/2025'
             )
+            generator = CalendarioGenerator(config)
 
     # Set up mock DataFrames
     import collections
@@ -206,7 +207,7 @@ def test_initialize_variables_handles_invalid_date():
     # No need to assert length if we ignore KeyError, test passes if ValueError is not raised
 
 def test_initialize_variables_prevents_uncontrolled_resource_consumption():
-    from generator_mod import CalendarioGenerator
+    from generator_mod import CalendarioGenerator, CalendarioConfig
     import pandas as pd
     from unittest.mock import patch, MagicMock
     import datetime
@@ -214,10 +215,11 @@ def test_initialize_variables_prevents_uncontrolled_resource_consumption():
     # Initialize generator with dummy values
     with patch.object(CalendarioGenerator, 'load_data'):
         with patch.object(CalendarioGenerator, 'initialize_variables'):
-            generator = CalendarioGenerator(
+            config = CalendarioConfig(
                 data_inizio_str='01/01/2025',
                 data_fine_str='31/01/2025'
             )
+            generator = CalendarioGenerator(config)
 
     # Mock DataFrames
     generator.classi_df = pd.DataFrame({'CLASSE': ['1A'], 'DOC LUN': ['Doc1'], 'DOC MAR': [''], 'DOC MER': [''], 'DOC GIO': [''], 'DOC VEN': [''], 'DOC SAB': ['']})
