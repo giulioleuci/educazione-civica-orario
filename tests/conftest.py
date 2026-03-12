@@ -46,6 +46,8 @@ class MockDataFrame:
 mock_pd.DataFrame.side_effect = MockDataFrame
 
 mock_np = MagicMock()
+class MockBool(object): pass
+mock_np.bool_ = MockBool
 sys.modules['numpy'] = mock_np
 
 # Mock openpyxl (it is imported inside a function, but let's be safe)
