@@ -94,6 +94,22 @@ def _sanitize_for_excel(df):
         return df.map(sanitize_val)
     return df.applymap(sanitize_val)
 
+def _get_excel_styles():
+    """Restituisce gli stili predefiniti per i fogli Excel."""
+    from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
+    return {
+        'header_fill': PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid'),
+        'week_fill': PatternFill(start_color='E6E6FA', end_color='E6E6FA', fill_type='solid'),
+        'thin_border': Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        ),
+        'centered_alignment': Alignment(horizontal='center', vertical='center'),
+        'bold_font': Font(bold=True)
+    }
+
 def _get_week_range(date):
     """Funzione per calcolare il range settimanale (lun-sab)"""
     start = date - timedelta(days=date.weekday())  # Lunedì
@@ -102,18 +118,13 @@ def _get_week_range(date):
 
 def genera_orario_classi(calendario, classi_df, cartella_output):
     """Genera il file orario_classi.xlsx: un foglio per ogni classe, con le sostituzioni settimanali"""
-    from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
     from openpyxl.utils import get_column_letter
 
-    header_fill = PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
-    thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    centered_alignment = Alignment(horizontal='center', vertical='center')
-    bold_font = Font(bold=True)
+    styles = _get_excel_styles()
+    header_fill = styles['header_fill']
+    thin_border = styles['thin_border']
+    centered_alignment = styles['centered_alignment']
+    bold_font = styles['bold_font']
 
     writer_classi = pd.ExcelWriter(os.path.join(cartella_output, 'orario_classi.xlsx'), engine='openpyxl')
 
@@ -170,19 +181,14 @@ def genera_orario_classi(calendario, classi_df, cartella_output):
 
 def genera_orario_docenti(calendario, docenti_civics_df, cartella_output):
     """Genera il file orario_docenti.xlsx: un foglio per ogni docente, con le ore settimanali su righe"""
-    from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
     from openpyxl.utils import get_column_letter
 
-    header_fill = PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid')
-    week_fill = PatternFill(start_color='E6E6FA', end_color='E6E6FA', fill_type='solid')
-    thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    centered_alignment = Alignment(horizontal='center', vertical='center')
-    bold_font = Font(bold=True)
+    styles = _get_excel_styles()
+    header_fill = styles['header_fill']
+    week_fill = styles['week_fill']
+    thin_border = styles['thin_border']
+    centered_alignment = styles['centered_alignment']
+    bold_font = styles['bold_font']
 
     writer_docenti = pd.ExcelWriter(os.path.join(cartella_output, 'orario_docenti.xlsx'), engine='openpyxl')
 
