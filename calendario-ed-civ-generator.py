@@ -805,6 +805,69 @@ class CalendarioGenerator:
 
         return True
 
+    def _calcola_deviazione_totale(self, ore_settimanali_classe):
+        total_deviation = 0
+        for classe in self.classi_df['CLASSE']:
+            ore_per_settimana = ore_settimanali_classe.get(classe, {})
+            deviations = [max(0, ore - 1) for ore in ore_per_settimana.values()]
+            total_deviation += sum(deviations)
+        return total_deviation
+
+    def _calcola_penalita_classe(self, classe, ore_perse_docente):
+        variance_total = 0
+        max_percentage_penalty = 0
+        penalties_total = 0
+
+        medium_intensity_penalty = 5
+        high_intensity_penalty = 10
+        low_intensity_penalty = 1
+
+        # Penalità per docenti civics
+        medium_intensity_penalty_civics_teacher = 10
+        high_intensity_penalty_civics_teacher = 20
+        low_intensity_penalty_civics_teacher = 0.5
+
+        # Utilizza il lookup pre-calcolato invece della scansione O(N)
+        ore_totali_docente = self.ore_totali_docente_per_classe[classe]
+
+        total_teaching_hours = sum(ore_totali_docente.values())
+        P = (self.ore_tot_civics / total_teaching_hours) * 100 if total_teaching_hours > 0 else 0
+
+        percentuali = []
+        for docente in ore_totali_docente:
+            ore_totali = ore_totali_docente[docente]
+            ore_perse = ore_perse_docente.get(docente, 0)
+            percentuale_perse = (ore_perse / ore_totali) * 100 if ore_totali > 0 else 0
+            percentuali.append(percentuale_perse)
+
+            # Penalità in base alla percentuale di ore perse
+            if percentuale_perse > 2 * P:
+                if docente in self.docenti_civics_organico[classe]:
+                    penalties_total += high_intensity_penalty_civics_teacher
+                else:
+                    penalties_total += high_intensity_penalty
+            elif percentuale_perse > P:
+                if docente in self.docenti_civics_organico[classe]:
+                    penalties_total += medium_intensity_penalty_civics_teacher
+                else:
+                    penalties_total += medium_intensity_penalty
+            elif percentuale_perse < 0.3 * P:
+                if docente in self.docenti_civics_organico[classe]:
+                    penalties_total += low_intensity_penalty_civics_teacher
+                else:
+                    penalties_total += low_intensity_penalty
+
+            # Penalità per percentuali molto alte
+            if docente in self.docenti_civics_organico[classe]:
+                if percentuale_perse > 5:
+                    max_percentage_penalty += (percentuale_perse - 5) * 10
+
+        if percentuali:
+            variance = np.var(percentuali)
+            variance_total += variance
+
+        return variance_total, max_percentage_penalty, penalties_total
+
     def calcola_fitness(self, individuo):
         # Calcola la fitness di un individuo, utilizzando diverse metriche
         # Minore è la fitness, migliore è l'individuo
@@ -824,67 +887,18 @@ class CalendarioGenerator:
             docente_sostituito = slot_info['DOCENTE_SOSTITUITO']
             ore_perse_per_classe_docente[nome_classe][docente_sostituito] += 1
 
-        total_deviation = 0
-        for classe in self.classi_df['CLASSE']:
-            ore_per_settimana = ore_settimanali_classe.get(classe, {})
-            deviations = [max(0, ore - 1) for ore in ore_per_settimana.values()]
-            total_deviation += sum(deviations)
+        total_deviation = self._calcola_deviazione_totale(ore_settimanali_classe)
 
         variance_total = 0
         max_percentage_penalty = 0
         penalties_total = 0
 
-        medium_intensity_penalty = 5
-        high_intensity_penalty = 10
-        low_intensity_penalty = 1
-
-        # Penalità per docenti civics
-        medium_intensity_penalty_civics_teacher = 10
-        high_intensity_penalty_civics_teacher = 20
-        low_intensity_penalty_civics_teacher = 0.5
-
         for classe in self.classi_df['CLASSE']:
-            # Utilizza il lookup pre-calcolato invece della scansione O(N)
-            ore_totali_docente = self.ore_totali_docente_per_classe[classe]
-
-            # Recupera le ore perse pre-calcolate per questa classe
             ore_perse_docente = ore_perse_per_classe_docente[classe]
-
-            total_teaching_hours = sum(ore_totali_docente.values())
-            P = (self.ore_tot_civics / total_teaching_hours) * 100 if total_teaching_hours > 0 else 0
-
-            percentuali = []
-            for docente in ore_totali_docente:
-                ore_totali = ore_totali_docente[docente]
-                ore_perse = ore_perse_docente.get(docente, 0)
-                percentuale_perse = (ore_perse / ore_totali) * 100 if ore_totali > 0 else 0
-                percentuali.append(percentuale_perse)
-
-                # Penalità in base alla percentuale di ore perse
-                if percentuale_perse > 2 * P:
-                    if docente in self.docenti_civics_organico[classe]:
-                        penalties_total += high_intensity_penalty_civics_teacher
-                    else:
-                        penalties_total += high_intensity_penalty
-                elif percentuale_perse > P:
-                    if docente in self.docenti_civics_organico[classe]:
-                        penalties_total += medium_intensity_penalty_civics_teacher
-                    else:
-                        penalties_total += medium_intensity_penalty
-                elif percentuale_perse < 0.3 * P:
-                    if docente in self.docenti_civics_organico[classe]:
-                        penalties_total += low_intensity_penalty_civics_teacher
-                    else:
-                        penalties_total += low_intensity_penalty
-
-                # Penalità per percentuali molto alte
-                if docente in self.docenti_civics_organico[classe]:
-                    if percentuale_perse > 5:  
-                        max_percentage_penalty += (percentuale_perse - 5) * 10
-
-            if percentuali:
-                variance = np.var(percentuali)
-                variance_total += variance
+            v_tot, max_p, p_tot = self._calcola_penalita_classe(classe, ore_perse_docente)
+            variance_total += v_tot
+            max_percentage_penalty += max_p
+            penalties_total += p_tot
 
         total_fitness = total_deviation * 10 + variance_total * 5 + max_percentage_penalty + penalties_total
         return total_fitness
