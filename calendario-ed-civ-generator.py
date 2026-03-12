@@ -391,6 +391,20 @@ class CalendarioGenerator:
         self.giorni_settimana = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB']
         self.mappa_giorni = {0: 'LUN', 1: 'MAR', 2: 'MER', 3: 'GIO', 4: 'VEN', 5: 'SAB', 6: 'DOM'}
 
+        self._init_date_scolastiche()
+        self._parse_orari_classi()
+        self._parse_disponibilita_docenti()
+        self._parse_assegnazioni_docenti()
+        self._identifica_docenti_civics_organico()
+        self._genera_slot_disponibili()
+        self._precalcola_lookups()
+
+        # Debug info
+        print(f"Numero totale di slot disponibili: {len(self.slot_disponibili)}")
+        print(f"Classi trovate: {self.classi_df['CLASSE'].tolist()}")
+        print(f"Docenti civics: {list(self.docenti_civics_classi.keys())}")
+
+    def _init_date_scolastiche(self):
         # Creazione della lista di date scolastiche escludendo i giorni di chiusura
         logging.info("Creazione della lista delle date scolastiche escludendo le chiusure...")
         chiusure = set()
@@ -419,6 +433,7 @@ class CalendarioGenerator:
 
         logging.info(f"Numero totale di giorni scolastici: {len(self.date_scolastiche)}")
 
+    def _parse_orari_classi(self):
         # Parsing orari delle classi
         logging.info("Parsing degli orari delle classi...")
         self.orari_classi = {}
@@ -430,6 +445,7 @@ class CalendarioGenerator:
                 lista_docenti = row[colonna_doc].split(';')
                 self.orari_classi[nome_classe][giorno] = lista_docenti
 
+    def _parse_disponibilita_docenti(self):
         # Parsing disponibilità docenti civics
         logging.info("Parsing della disponibilità dei docenti di educazione civica...")
         self.disponibilita_civics = {}
@@ -442,6 +458,7 @@ class CalendarioGenerator:
                 disponibilita_bool = [x == 'DISPOS' for x in disponibilita_lista]
                 self.disponibilita_civics[nome_docente][giorno] = disponibilita_bool
 
+    def _parse_assegnazioni_docenti(self):
         # Parsing assegnazioni docenti civics
         logging.info("Parsing delle assegnazioni dei docenti di educazione civica...")
         self.docenti_civics_classi = {}
@@ -450,6 +467,7 @@ class CalendarioGenerator:
             lista_classi = row['CLASSI'].split(';')
             self.docenti_civics_classi[nome_docente] = lista_classi
 
+    def _identifica_docenti_civics_organico(self):
         # Identificazione docenti di civics anche in altre materie
         logging.info("Identificazione dei docenti di civics che insegnano altre materie nelle classi...")
         self.docenti_civics_organico = defaultdict(set)
@@ -462,6 +480,7 @@ class CalendarioGenerator:
                     if docente in self.docenti_civics_classi:
                         self.docenti_civics_organico[nome_classe].add(docente)
 
+    def _genera_slot_disponibili(self):
         # Generazione degli slot disponibili (classe, data, giorno, ora, docente_sostituito)
         logging.info("Generazione degli slot disponibili...")
         self.slot_disponibili = []
@@ -483,6 +502,7 @@ class CalendarioGenerator:
                             }
                             self.slot_disponibili.append(slot)
 
+    def _precalcola_lookups(self):
         # Pre-calcola lookups per ottimizzare le prestazioni
         self.slots_by_class = defaultdict(list)
         self.slots_by_key = {}
@@ -491,11 +511,6 @@ class CalendarioGenerator:
             self.slots_by_class[slot['CLASSE']].append(slot)
             self.slots_by_key[slot['KEY']] = slot
             self.ore_totali_docente_per_classe[slot['CLASSE']][slot['DOCENTE_SOSTITUITO']] += 1
-
-        # Debug info
-        print(f"Numero totale di slot disponibili: {len(self.slot_disponibili)}")
-        print(f"Classi trovate: {self.classi_df['CLASSE'].tolist()}")
-        print(f"Docenti civics: {list(self.docenti_civics_classi.keys())}")
 
     def genera_calendario(self):
         # Funzione principale che esegue l'algoritmo genetico, genera popolazione,
