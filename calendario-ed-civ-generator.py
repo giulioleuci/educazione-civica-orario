@@ -201,8 +201,7 @@ def genera_orario_docenti(calendario, docenti_civics_df, cartella_output):
         calendario_per_docente[entry['DOCENTE_CIVICS']].append(entry)
 
     # Per ogni docente di civics creiamo uno sheet con la suddivisione settimanale
-    for _, docente_row in docenti_civics_df.iterrows():
-        nome_docente = docente_row['DOCENTE']
+    for nome_docente in docenti_civics_df['DOCENTE']:
         docente_entries = calendario_per_docente.get(nome_docente, [])
 
         # Struttura dati per salvare le lezioni per settimana, giorno, ora
