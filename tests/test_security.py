@@ -109,10 +109,11 @@ def test_genera_file_excel_handles_str_conversion_error():
     mock_ws = MagicMock()
     # ws.columns is an iterable of columns
     mock_ws.columns = [[mock_cell_bad, mock_cell_good]]
+    mock_ws.max_row = 1
 
     # Mock ExcelWriter
     mock_writer = MagicMock()
-    mock_writer.sheets = {"ClassA": mock_ws}
+    mock_writer.sheets = {"ClassA": mock_ws, "Doc1": mock_ws}
 
     # Input data
     calendario = [{
