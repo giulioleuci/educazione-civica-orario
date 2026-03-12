@@ -43,6 +43,7 @@ import random
 import multiprocessing
 import logging
 import re
+from dataclasses import dataclass
 
 # Configura il logger per informazioni sull'esecuzione
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -288,46 +289,49 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
     genera_orario_docenti(calendario, docenti_civics_df, cartella_output)
 
 
+@dataclass
+class CalendarioConfig:
+    num_varianti: int = 1
+    data_inizio_str: str = '02/12/2024'
+    data_fine_str: str = '10/06/2025'
+    ore_tot_civics: int = 27
+    cartella_output: str = "CALENDARIO_GENERATO"
+    num_generazioni: int = 200
+    early_stopping_n: int = 20
+    popolazione_size: int = 200
+    probabilita_mutazione: float = 0.2
+    probabilita_crossover: float = 0.8
+    elitismo_rate: float = 0.01
+    num_cores: int = 4
+    allow_teacher_replace_self: bool = True
+    save_interval: int = 50
+
+
 class CalendarioGenerator:
     # Classe principale che gestisce l'esecuzione dell'algoritmo genetico
-    def __init__(
-        self,
-        num_varianti=1,
-        data_inizio_str='02/12/2024',
-        data_fine_str='10/06/2025',
-        ore_tot_civics=27,
-        cartella_output="CALENDARIO_GENERATO",
-        num_generazioni=200,
-        early_stopping_n=20,
-        popolazione_size=200,
-        probabilita_mutazione=0.2,
-        probabilita_crossover=0.8,
-        elitismo_rate=0.01,
-        num_cores=4,
-        allow_teacher_replace_self=True,
-        save_interval=50
-    ):
+    def __init__(self, config: CalendarioConfig):
         # Inizializzazione dei parametri
-        self.num_varianti = num_varianti
-        self.data_inizio_str = data_inizio_str
-        self.data_fine_str = data_fine_str
-        self.ore_tot_civics = ore_tot_civics
+        self.config = config
+        self.num_varianti = config.num_varianti
+        self.data_inizio_str = config.data_inizio_str
+        self.data_fine_str = config.data_fine_str
+        self.ore_tot_civics = config.ore_tot_civics
         # Sanitize cartella_output to prevent path traversal
-        self.cartella_output = _sanitize_output_path(cartella_output)
-        self.num_generazioni = num_generazioni
-        self.early_stopping_n = early_stopping_n
-        self.popolazione_size = popolazione_size
-        self.probabilita_mutazione = probabilita_mutazione
-        self.probabilita_crossover = probabilita_crossover
-        self.elitismo_rate = elitismo_rate
-        self.num_cores = num_cores
-        self.allow_teacher_replace_self = allow_teacher_replace_self
-        self.save_interval = save_interval
+        self.cartella_output = _sanitize_output_path(config.cartella_output)
+        self.num_generazioni = config.num_generazioni
+        self.early_stopping_n = config.early_stopping_n
+        self.popolazione_size = config.popolazione_size
+        self.probabilita_mutazione = config.probabilita_mutazione
+        self.probabilita_crossover = config.probabilita_crossover
+        self.elitismo_rate = config.elitismo_rate
+        self.num_cores = config.num_cores
+        self.allow_teacher_replace_self = config.allow_teacher_replace_self
+        self.save_interval = config.save_interval
 
         # Backup degli hyperparams di base
-        self.base_probabilita_mutazione = probabilita_mutazione
-        self.base_probabilita_crossover = probabilita_crossover
-        self.base_elitismo_rate = elitismo_rate
+        self.base_probabilita_mutazione = config.probabilita_mutazione
+        self.base_probabilita_crossover = config.probabilita_crossover
+        self.base_elitismo_rate = config.elitismo_rate
 
         self.hyperparams = {
             'probabilita_mutazione': self.probabilita_mutazione,
@@ -967,7 +971,7 @@ def calcola_fitness_helper(individuo):
 
 
 if __name__ == "__main__":
-    generator = CalendarioGenerator(
+    config = CalendarioConfig(
         num_varianti=1,
         data_inizio_str='15/10/2024',
         data_fine_str='10/06/2025',
@@ -982,5 +986,6 @@ if __name__ == "__main__":
         num_cores=10,
         allow_teacher_replace_self=False
     )
+    generator = CalendarioGenerator(config)
     generator.genera_calendario()
 
