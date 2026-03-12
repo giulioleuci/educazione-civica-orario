@@ -7,6 +7,7 @@ class MockGenerator(CalendarioGenerator):
     def __init__(self, classi_df, slot_disponibili):
         # Bypass the original __init__ to avoid file loading and initialization logic
         self.classi_df = classi_df
+        self.lista_classi = classi_df['CLASSE']
         self.slot_disponibili = slot_disponibili
         self.slots_by_class = defaultdict(list)
         self.ore_totali_docente_per_classe = defaultdict(lambda: defaultdict(int))
