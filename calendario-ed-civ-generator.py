@@ -377,10 +377,25 @@ class CalendarioGenerator:
     def load_data(self):
         # Caricamento dati da file CSV
         logging.info("Caricamento dei file CSV...")
-        self.classi_df = pd.read_csv('classes.csv')
-        self.docenti_civics_df = pd.read_csv('civics_teachers.csv')
-        self.disponibilita_df = pd.read_csv('availability.csv')
-        self.chiusure_df = pd.read_csv('closures.csv')
+        try:
+            self.classi_df = pd.read_csv('classes.csv')
+            self.docenti_civics_df = pd.read_csv('civics_teachers.csv')
+            self.disponibilita_df = pd.read_csv('availability.csv')
+            self.chiusure_df = pd.read_csv('closures.csv')
+            # Inizializza la lista delle classi dal DataFrame
+            self.classi_list = list(self.classi_df['CLASSE'])
+        except FileNotFoundError as e:
+            logging.error(f"Errore: File non trovato - {e.filename}")
+            raise SystemExit(1)
+        except pd.errors.EmptyDataError as e:
+            logging.error(f"Errore: Il file CSV è vuoto - {e}")
+            raise SystemExit(1)
+        except pd.errors.ParserError as e:
+            logging.error(f"Errore: Errore nel parsing del file CSV - {e}")
+            raise SystemExit(1)
+        except Exception as e:
+            logging.error(f"Errore imprevisto durante il caricamento dei dati: {e}")
+            raise SystemExit(1)
 
     def initialize_variables(self):
         logging.info("Inizializzazione delle variabili...")
