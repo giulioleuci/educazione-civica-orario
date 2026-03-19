@@ -532,6 +532,13 @@ class CalendarioGenerator:
             for nome_classe in classi:
                 self.docenti_per_classe[nome_classe].append(docente_civics)
 
+        # Pre-calcola P per ogni classe per ottimizzare le prestazioni in _calcola_penalita_classe
+        self.P_per_classe = {}
+        for classe in self.classi_list:
+            ore_totali_docente = self.ore_totali_docente_per_classe[classe]
+            total_teaching_hours = sum(ore_totali_docente.values())
+            self.P_per_classe[classe] = (self.ore_tot_civics / total_teaching_hours) * 100 if total_teaching_hours > 0 else 0
+
     def genera_calendario(self):
         # Funzione principale che esegue l'algoritmo genetico, genera popolazione,
         # esegue crossover, mutazione, selezione e infine salva i risultati
@@ -863,9 +870,7 @@ class CalendarioGenerator:
 
         # Utilizza il lookup pre-calcolato invece della scansione O(N)
         ore_totali_docente = self.ore_totali_docente_per_classe[classe]
-
-        total_teaching_hours = sum(ore_totali_docente.values())
-        P = (self.ore_tot_civics / total_teaching_hours) * 100 if total_teaching_hours > 0 else 0
+        P = self.P_per_classe.get(classe, 0)
 
         percentuali = []
         for docente in ore_totali_docente:

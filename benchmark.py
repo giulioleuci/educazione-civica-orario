@@ -55,6 +55,12 @@ class MockCalendarioGenerator(calendario.CalendarioGenerator):
                     self.slots_by_key[key] = slot
                     self.ore_totali_docente_per_classe[classe][docente] += 1
 
+        self.P_per_classe = {}
+        for classe in self.classi_list:
+            ore_totali_docente = self.ore_totali_docente_per_classe[classe]
+            total_teaching_hours = sum(ore_totali_docente.values())
+            self.P_per_classe[classe] = (self.ore_tot_civics / total_teaching_hours) * 100 if total_teaching_hours > 0 else 0
+
         self.individuo = {}
         for key in self.slots_by_key:
             if hash(key) % 10 == 0: # 10% of slots have civics
