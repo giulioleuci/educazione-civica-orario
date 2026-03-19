@@ -511,6 +511,12 @@ class CalendarioGenerator:
             self.slots_by_key[slot['KEY']] = slot
             self.ore_totali_docente_per_classe[slot['CLASSE']][slot['DOCENTE_SOSTITUITO']] += 1
 
+        # Mappa inversa per trovare i docenti di civics per ogni classe
+        self.docenti_per_classe = defaultdict(list)
+        for docente_civics, classi in self.docenti_civics_classi.items():
+            for nome_classe in classi:
+                self.docenti_per_classe[nome_classe].append(docente_civics)
+
     def genera_calendario(self):
         # Funzione principale che esegue l'algoritmo genetico, genera popolazione,
         # esegue crossover, mutazione, selezione e infine salva i risultati
@@ -763,17 +769,16 @@ class CalendarioGenerator:
 
             # Trova docenti civics possibili
             docenti_possibili = []
-            for docente_civics in self.docenti_civics_classi:
-                if nome_classe in self.docenti_civics_classi[docente_civics]:
-                    disponibile = False
-                    if (docente_civics in self.docenti_civics_organico[nome_classe]) and (docente_civics == docente_sostituito):
-                        # Se il docente civics insegna anche la materia e coincide con il docente sostituito
+            for docente_civics in self.docenti_per_classe[nome_classe]:
+                disponibile = False
+                if (docente_civics in self.docenti_civics_organico[nome_classe]) and (docente_civics == docente_sostituito):
+                    # Se il docente civics insegna anche la materia e coincide con il docente sostituito
+                    disponibile = True
+                else:
+                    # Controlla disponibilità sul giorno e ora
+                    if len(self.disponibilita_civics[docente_civics][nome_giorno]) >= ora and \
+                        self.disponibilita_civics[docente_civics][nome_giorno][ora - 1]:
                         disponibile = True
-                    else:
-                        # Controlla disponibilità sul giorno e ora
-                        if len(self.disponibilita_civics[docente_civics][nome_giorno]) >= ora and \
-                            self.disponibilita_civics[docente_civics][nome_giorno][ora - 1]:
-                            disponibile = True
 
                     # Controllo se il docente non insegna due ore nello stesso giorno alla stessa ora
                     if disponibile and ore_per_docente_data[docente_civics].get(data, 0) != ora:
@@ -966,19 +971,18 @@ class CalendarioGenerator:
                 docente_sostituito = slot_info['DOCENTE_SOSTITUITO']
 
                 docenti_possibili = []
-                for docente_civics in self.docenti_civics_classi:
-                    if nome_classe in self.docenti_civics_classi[docente_civics]:
-                        disponibile = False
-                        if docente_civics in self.docenti_civics_organico[nome_classe]:
-                            if self.allow_teacher_replace_self and docente_civics == docente_sostituito:
-                                disponibile = True
-                        else:
-                            if len(self.disponibilita_civics[docente_civics][nome_giorno]) >= ora and \
-                               self.disponibilita_civics[docente_civics][nome_giorno][ora - 1]:
-                                disponibile = True
+                for docente_civics in self.docenti_per_classe[nome_classe]:
+                    disponibile = False
+                    if docente_civics in self.docenti_civics_organico[nome_classe]:
+                        if self.allow_teacher_replace_self and docente_civics == docente_sostituito:
+                            disponibile = True
+                    else:
+                        if len(self.disponibilita_civics[docente_civics][nome_giorno]) >= ora and \
+                           self.disponibilita_civics[docente_civics][nome_giorno][ora - 1]:
+                            disponibile = True
 
-                        if disponibile:
-                            docenti_possibili.append(docente_civics)
+                    if disponibile:
+                        docenti_possibili.append(docente_civics)
 
                 if docenti_possibili:
                     individuo[key] = random.choice(docenti_possibili)
