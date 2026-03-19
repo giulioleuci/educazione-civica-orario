@@ -5,11 +5,11 @@ from generator_mod import _get_excel_styles
 
 def test_get_excel_styles():
     # We patch the classes in openpyxl.styles because they are imported inside the function
-    with patch('openpyxl.styles.PatternFill') as mock_fill, \
-         patch('openpyxl.styles.Border') as mock_border, \
-         patch('openpyxl.styles.Side') as mock_side, \
-         patch('openpyxl.styles.Alignment') as mock_alignment, \
-         patch('openpyxl.styles.Font') as mock_font:
+    with patch('generator_mod.PatternFill') as mock_fill, \
+         patch('generator_mod.Border') as mock_border, \
+         patch('generator_mod.Side') as mock_side, \
+         patch('generator_mod.Alignment') as mock_alignment, \
+         patch('generator_mod.Font') as mock_font:
 
         # Configure mocks to return distinct values for identification
         mock_fill.side_effect = lambda **kwargs: f"Fill_{kwargs.get('start_color')}"
