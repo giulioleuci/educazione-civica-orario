@@ -44,6 +44,8 @@ import multiprocessing
 import logging
 import re
 from dataclasses import dataclass
+from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
+from openpyxl.utils import get_column_letter
 
 # Configura il logger per informazioni sull'esecuzione
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -96,7 +98,6 @@ def _sanitize_for_excel(df):
 
 def _get_excel_styles():
     """Restituisce gli stili predefiniti per i fogli Excel."""
-    from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
     return {
         'header_fill': PatternFill(start_color='B8CCE4', end_color='B8CCE4', fill_type='solid'),
         'week_fill': PatternFill(start_color='E6E6FA', end_color='E6E6FA', fill_type='solid'),
@@ -118,7 +119,6 @@ def _get_week_range(date):
 
 def genera_orario_classi(calendario, classi_df, cartella_output):
     """Genera il file orario_classi.xlsx: un foglio per ogni classe, con le sostituzioni settimanali"""
-    from openpyxl.utils import get_column_letter
 
     styles = _get_excel_styles()
     header_fill = styles['header_fill']
@@ -181,7 +181,6 @@ def genera_orario_classi(calendario, classi_df, cartella_output):
 
 def genera_orario_docenti(calendario, docenti_civics_df, cartella_output):
     """Genera il file orario_docenti.xlsx: un foglio per ogni docente, con le ore settimanali su righe"""
-    from openpyxl.utils import get_column_letter
 
     styles = _get_excel_styles()
     header_fill = styles['header_fill']
