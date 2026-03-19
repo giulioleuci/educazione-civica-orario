@@ -94,7 +94,11 @@ def _sanitize_for_excel(df):
     # Usiamo map se disponibile, altrimenti applymap.
     if hasattr(df, 'map'):
         return df.map(sanitize_val)
-    return df.applymap(sanitize_val)
+
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=FutureWarning)
+        return df.applymap(sanitize_val)
 
 def _get_excel_styles():
     """Restituisce gli stili predefiniti per i fogli Excel."""
