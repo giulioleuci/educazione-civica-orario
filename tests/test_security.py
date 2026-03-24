@@ -168,6 +168,35 @@ def test_sanitize_for_excel_calls_applymap_if_map_absent():
     _sanitize_for_excel(mock_df)
     assert mock_df.applymap.called
 
+def test_initialize_variables_invalid_config_dates():
+    from generator_mod import CalendarioGenerator, CalendarioConfig
+    from unittest.mock import patch
+
+    with patch.object(CalendarioGenerator, 'load_data'):
+        # invalid start date
+        config1 = CalendarioConfig(
+            data_inizio_str='invalid',
+            data_fine_str='31/01/2025'
+        )
+        with patch.object(CalendarioGenerator, 'initialize_variables'):
+            generator1 = CalendarioGenerator(config1)
+
+        with pytest.raises(SystemExit) as e1:
+            generator1.initialize_variables()
+        assert e1.value.code == 1
+
+        # invalid end date
+        config2 = CalendarioConfig(
+            data_inizio_str='01/01/2025',
+            data_fine_str='invalid'
+        )
+        with patch.object(CalendarioGenerator, 'initialize_variables'):
+            generator2 = CalendarioGenerator(config2)
+
+        with pytest.raises(SystemExit) as e2:
+            generator2.initialize_variables()
+        assert e2.value.code == 1
+
 def test_initialize_variables_handles_invalid_date():
     from generator_mod import CalendarioGenerator, CalendarioConfig
     import pandas as pd

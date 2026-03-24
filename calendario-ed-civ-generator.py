@@ -403,8 +403,12 @@ class CalendarioGenerator:
 
     def initialize_variables(self):
         logging.info("Inizializzazione delle variabili...")
-        self.data_inizio = datetime.strptime(self.data_inizio_str, '%d/%m/%Y')
-        self.data_fine = datetime.strptime(self.data_fine_str, '%d/%m/%Y')
+        try:
+            self.data_inizio = datetime.strptime(self.data_inizio_str, '%d/%m/%Y')
+            self.data_fine = datetime.strptime(self.data_fine_str, '%d/%m/%Y')
+        except ValueError as e:
+            logging.error(f"Errore: Formato data non valido per data_inizio o data_fine - {e}")
+            raise SystemExit(1)
         self.giorni_settimana = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB']
         self.mappa_giorni = {0: 'LUN', 1: 'MAR', 2: 'MER', 3: 'GIO', 4: 'VEN', 5: 'SAB', 6: 'DOM'}
 
