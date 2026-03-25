@@ -63,6 +63,10 @@ def _sanitize_output_path(path, default="CALENDARIO_GENERATO"):
         return default
     return path
 
+def _sanitize_for_logging(value):
+    """Sanitizza le stringhe per prevenire Log Injection (CRLF)."""
+    return str(value).replace('\n', '\\n').replace('\r', '\\r')
+
 def _sanitize_sheet_name(name, default="Sheet"):
     """
     Sanitizza il nome del foglio Excel:
@@ -389,16 +393,16 @@ class CalendarioGenerator:
             # Inizializza la lista delle classi dal DataFrame
             self.classi_list = list(self.classi_df['CLASSE'])
         except FileNotFoundError as e:
-            logging.error(f"Errore: File non trovato - {e.filename}")
+            logging.error(f"Errore: File non trovato - {_sanitize_for_logging(e.filename)}")
             raise SystemExit(1)
         except pd.errors.EmptyDataError as e:
-            logging.error(f"Errore: Il file CSV è vuoto - {e}")
+            logging.error(f"Errore: Il file CSV è vuoto - {_sanitize_for_logging(e)}")
             raise SystemExit(1)
         except pd.errors.ParserError as e:
-            logging.error(f"Errore: Errore nel parsing del file CSV - {e}")
+            logging.error(f"Errore: Errore nel parsing del file CSV - {_sanitize_for_logging(e)}")
             raise SystemExit(1)
         except Exception as e:
-            logging.error(f"Errore imprevisto durante il caricamento dei dati: {e}")
+            logging.error(f"Errore imprevisto durante il caricamento dei dati: {_sanitize_for_logging(e)}")
             raise SystemExit(1)
 
     def initialize_variables(self):
@@ -407,7 +411,7 @@ class CalendarioGenerator:
             self.data_inizio = datetime.strptime(self.data_inizio_str, '%d/%m/%Y')
             self.data_fine = datetime.strptime(self.data_fine_str, '%d/%m/%Y')
         except ValueError as e:
-            logging.error(f"Errore: Formato data non valido per data_inizio o data_fine - {e}")
+            logging.error(f"Errore: Formato data non valido per data_inizio o data_fine - {_sanitize_for_logging(e)}")
             raise SystemExit(1)
         self.giorni_settimana = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB']
         self.mappa_giorni = {0: 'LUN', 1: 'MAR', 2: 'MER', 3: 'GIO', 4: 'VEN', 5: 'SAB', 6: 'DOM'}
@@ -435,14 +439,14 @@ class CalendarioGenerator:
                 fine = datetime.strptime(row['FINE'], '%d/%m/%Y')
                 diff_days = (fine - inizio).days
                 if diff_days < 0:
-                    logging.warning(f"Ignorata chiusura con data fine precedente a data inizio: INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')}")
+                    logging.warning(f"Ignorata chiusura con data fine precedente a data inizio: INIZIO={_sanitize_for_logging(row.get('INIZIO'))}, FINE={_sanitize_for_logging(row.get('FINE'))}")
                     continue
                 if diff_days > 366:
-                    logging.warning(f"Ignorata chiusura con intervallo troppo lungo (> 366 giorni): INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')}")
+                    logging.warning(f"Ignorata chiusura con intervallo troppo lungo (> 366 giorni): INIZIO={_sanitize_for_logging(row.get('INIZIO'))}, FINE={_sanitize_for_logging(row.get('FINE'))}")
                     continue
                 chiusure.update([inizio + timedelta(days=i) for i in range(diff_days + 1)])
             except ValueError as e:
-                logging.warning(f"Ignorata chiusura con date non valide: INIZIO={row.get('INIZIO')}, FINE={row.get('FINE')} - {e}")
+                logging.warning(f"Ignorata chiusura con date non valide: INIZIO={_sanitize_for_logging(row.get('INIZIO'))}, FINE={_sanitize_for_logging(row.get('FINE'))} - {_sanitize_for_logging(e)}")
                 continue
 
         self.date_scolastiche = []

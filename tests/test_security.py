@@ -2,7 +2,20 @@
 import pytest
 import os
 from unittest.mock import MagicMock
-from generator_mod import _sanitize_for_excel, _sanitize_output_path, _sanitize_sheet_name
+from generator_mod import _sanitize_for_excel, _sanitize_output_path, _sanitize_sheet_name, _sanitize_for_logging
+
+def test_sanitize_for_logging():
+    # Test CRLF injection prevention
+    assert _sanitize_for_logging("line1\r\nline2") == "line1\\r\\nline2"
+    assert _sanitize_for_logging("line1\nline2") == "line1\\nline2"
+    assert _sanitize_for_logging("line1\rline2") == "line1\\rline2"
+
+    # Test non-string input
+    assert _sanitize_for_logging(123) == "123"
+    assert _sanitize_for_logging(None) == "None"
+
+    # Test multiple injections
+    assert _sanitize_for_logging("\n\r\n\r") == "\\n\\r\\n\\r"
 
 def test_sanitize_sheet_name():
     # Happy paths
