@@ -96,12 +96,9 @@ def _sanitize_for_excel(df):
 
     # In pandas >= 2.1.0, applymap è deprecato in favore di map.
     # Usiamo map se disponibile, altrimenti applymap.
-    if hasattr(df, 'map'):
+    try:
         return df.map(sanitize_val)
-
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=FutureWarning)
+    except AttributeError:
         return df.applymap(sanitize_val)
 
 def _get_excel_styles():
