@@ -883,6 +883,7 @@ class CalendarioGenerator:
         # Utilizza il lookup pre-calcolato invece della scansione O(N)
         ore_totali_docente = self.ore_totali_docente_per_classe[classe]
         P = self.P_per_classe.get(classe, 0)
+        docenti_organico = self.docenti_civics_organico[classe]
 
         percentuali = []
         for docente in ore_totali_docente:
@@ -891,25 +892,27 @@ class CalendarioGenerator:
             percentuale_perse = (ore_perse / ore_totali) * 100 if ore_totali > 0 else 0
             percentuali.append(percentuale_perse)
 
+            is_organico = docente in docenti_organico
+
             # Penalità in base alla percentuale di ore perse
             if percentuale_perse > 2 * P:
-                if docente in self.docenti_civics_organico[classe]:
+                if is_organico:
                     penalties_total += high_intensity_penalty_civics_teacher
                 else:
                     penalties_total += high_intensity_penalty
             elif percentuale_perse > P:
-                if docente in self.docenti_civics_organico[classe]:
+                if is_organico:
                     penalties_total += medium_intensity_penalty_civics_teacher
                 else:
                     penalties_total += medium_intensity_penalty
             elif percentuale_perse < 0.3 * P:
-                if docente in self.docenti_civics_organico[classe]:
+                if is_organico:
                     penalties_total += low_intensity_penalty_civics_teacher
                 else:
                     penalties_total += low_intensity_penalty
 
             # Penalità per percentuali molto alte
-            if docente in self.docenti_civics_organico[classe]:
+            if is_organico:
                 if percentuale_perse > 5:
                     max_percentage_penalty += (percentuale_perse - 5) * 10
 
