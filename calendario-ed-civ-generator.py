@@ -914,7 +914,9 @@ class CalendarioGenerator:
                     max_percentage_penalty += (percentuale_perse - 5) * 10
 
         if percentuali:
-            variance = np.var(percentuali)
+            n = len(percentuali)
+            mean = sum(percentuali) / n
+            variance = sum((x - mean) ** 2 for x in percentuali) / n
             variance_total += variance
 
         return variance_total, max_percentage_penalty, penalties_total
