@@ -859,8 +859,7 @@ class CalendarioGenerator:
         total_deviation = 0
         for classe in self.classi_list:
             ore_per_settimana = ore_settimanali_classe.get(classe, {})
-            deviations = [max(0, ore - 1) for ore in ore_per_settimana.values()]
-            total_deviation += sum(deviations)
+            total_deviation += sum(max(0, ore - 1) for ore in ore_per_settimana.values())
         return total_deviation
 
     def _calcola_penalita_classe(self, classe, ore_perse_docente):
