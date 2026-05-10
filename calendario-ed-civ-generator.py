@@ -289,10 +289,14 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
     # 1. orario_classi.xlsx: un foglio per ogni classe, con le sostituzioni settimanali
     # 2. orario_docenti.xlsx: un foglio per ogni docente, con le ore settimanali su righe
 
-    # Converte le date in datetime, se stringhe
+    # Converte le date in datetime, se stringhe (ottimizzato con cache)
+    date_cache = {}
     for entry in calendario:
         if isinstance(entry['DATA'], str):
-            entry['DATA'] = datetime.strptime(entry['DATA'], '%d/%m/%Y')
+            date_str = entry['DATA']
+            if date_str not in date_cache:
+                date_cache[date_str] = datetime.strptime(date_str, '%d/%m/%Y')
+            entry['DATA'] = date_cache[date_str]
 
     genera_orario_classi(calendario, classi_df, cartella_output)
     genera_orario_docenti(calendario, docenti_civics_df, cartella_output)
