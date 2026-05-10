@@ -69,7 +69,7 @@ class MockCalendarioGenerator(calendario.CalendarioGenerator):
 gen = MockCalendarioGenerator()
 
 start = time.time()
-for _ in range(100):
+for _ in range(1000):
     gen.calcola_fitness(gen.individuo)
 end = time.time()
 print(f"Time taken for 100 fitness evaluations: {end - start:.4f} seconds")
