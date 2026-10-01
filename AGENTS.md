@@ -1,17 +1,17 @@
 # AGENTS.md
 
-Single-file Python app: `calendario-ed-civ-generator.py` is the whole program (genetic-algorithm
+Single-file Python app: `calendario-ed-civ-generator.py` is the whole program (OR-Tools CP-SAT
 scheduler for civics substitution hours). No package, no CLI, no config file, no CI, no
 requirements.txt/lint/typecheck setup. Comments, log messages and docs are in Italian — keep new
 comments/logs in Italian too.
 
 ## Commands
 
-- Install deps (nothing is vendored): `pip install pandas numpy openpyxl`
+- Install deps (nothing is vendored): `pip install pandas numpy openpyxl ortools`
   (`numpy` is imported but unused by the script; only `pandas` + `openpyxl` really matter.)
-- Tests: `python3 -m pytest tests -q` → 67 tests, <1s. pytest is **not** installed in this
+- Tests: `python3 -m pytest tests -q` → 53 tests, <1s. pytest is **not** installed in this
   environment (`pip install pytest` first). Works from the repo root; no pytest config exists.
-- One file / one test: `python3 -m pytest tests/test_selezione.py -q`, add `-k <name>` / `-x`.
+- One file / one test: `python3 -m pytest tests/test_cpsat.py -q`, add `-k <name>` / `-x`.
 - `python3 run_test.py` runs **only** `tests/test_security.py`, not the whole suite.
 - Ad-hoc perf scripts: `python3 benchmark.py`, `python3 test_perf.py` (creates and deletes
   `./test_output`), `python3 measure_date_parsing.py`.
@@ -19,36 +19,29 @@ comments/logs in Italian too.
 ## Running the generator
 
 - Parameters live in the `if __name__ == "__main__":` block at the bottom of
-  `calendario-ed-civ-generator.py:1048` — there are no CLI flags, so changing a run means editing
+  `calendario-ed-civ-generator.py` (end of file) — there are no CLI flags, so changing a run means editing
   that block.
 - The 4 input CSVs (`classes.csv`, `civics_teachers.csv`, `availability.csv`, `closures.csv`) are
   read with bare relative paths from the **current working directory** (`load_data`), so copy
   `examples/*.csv` into the repo root to smoke-test. Missing file → log error + `SystemExit(1)`.
   `examples/*.csv` only has 2 classes / 2 teachers: usable to verify the pipeline runs, not that
   results are meaningful.
-- `ore_tot_civics` must be ≤ the number of school weeks: `verifica_vincoli` hard-requires
-  *exactly* `ore_tot_civics` hours per class and max 1 hour/class/week. Individuals that violate it
-  are discarded, and `select_and_generate_new_population` loops until the population is refilled →
-  an infeasible config hangs instead of erroring.
-- Outputs (`calendar.csv`, `teachersLost.csv`, `orario_classi.xlsx`, `orario_docenti.xlsx`, plus
-  `generation_<n>/` every `save_interval` generations) go to `cartella_output`, forced to a
+- `ore_tot_civics` must be ≤ the number of school weeks: the model hard-requires
+  *exactly* `ore_tot_civics` hours per class and max 1 hour/class/week; an infeasible config makes
+  CP-SAT report INFEASIBLE and the script exits with an error.
+- Outputs (`calendar.csv`, `teachersLost.csv`, `orario_classi.xlsx`, `orario_docenti.xlsx`) go to `cartella_output`, forced to a
   basename by `_sanitize_output_path`.
 
-## Verified environment gotcha: Python 3.14 + multiprocessing
+## Solver
 
-On this machine `python3` is 3.14, where the default `multiprocessing` start method is
-`forkserver`. Every `multiprocessing.Pool(..., initargs=(self,))` then pickles the generator
-instance and dies with:
-`PicklingError: Can't pickle local object <function ..._precalcola_lookups.<locals>.<lambda>>`
-(from the `defaultdict(lambda: ...)` at `calendario-ed-civ-generator.py:535`; the module-level
-`init_worker`/`*_helper` functions also need an importable module name).
-
-- Fix when running: `multiprocessing.set_start_method("fork")` before building the generator
-  (verified: full run then completes and writes all outputs), or use Python ≤ 3.13 where `fork` is
-  the Linux default.
-- Do not drive the generator by importing it through `SourceFileLoader`/`importlib` (what
-  `benchmark.py` and `test_perf.py` do) — the worker helpers are unpicklable in that setup.
-- The test suite never builds a Pool, so it is unaffected.
+- No `multiprocessing` any more: `risolvi()` solves one CP-SAT model per group of classes sharing civics
+  teachers (`_componenti()`, normally one per teacher); `num_cores` = solver workers,
+  `tempo_max_secondi` × n. models = total time budget; time left by a model that proves optimality is split among the remaining ones (best feasible solution is used, not necessarily optimal).
+- Objective = fitness × `SCALA_OBIETTIVO`; penalties come from `_penalita_docente` (shared with
+  `calcola_fitness`), variance is rounded to 0.1% points (`DECIMI`) → ~0.1 fitness difference vs
+  `calcola_fitness` is expected.
+- No solution (infeasible or timeout without incumbent) → log error + `SystemExit(1)`.
+- The old `fork`/forkserver pickling problem on Python 3.14 is gone.
 
 ## Test harness conventions (`tests/conftest.py`)
 
@@ -71,9 +64,8 @@ instance and dies with:
   `genera_file_excel` converts `DATA` strings → `datetime`, so the `genera_orario_*` functions must
   receive datetimes (as `test_perf.py` does) — they call `_get_week_range` on it.
 - Fitness is minimised (lower is better) and sums deviation × 10, variance × 5, and penalties.
-- Known inconsistencies (don't "fix" silently, they may be relied on):
-  - `allow_teacher_replace_self` is honoured only in `mutazione()`; `genera_individuo_base()`
-    always allows a civics teacher to cover their own lesson.
-  - `CalendarioConfig.num_varianti` is stored and printed but never used.
-  - README says a subfolder is written for every generation; the code only writes
-    `generation_<n>` every `save_interval` generations (default 50).
+- `allow_teacher_replace_self` is honoured by `_docenti_disponibili` (used by the model): a teacher who
+  teaches in the class may only cover their own lesson, others follow `availability.csv`.
+- `CalendarioConfig.num_varianti` is stored and printed but never used (don't "fix" silently).
+- Tests: `conftest.py` mocks numpy/pandas but ortools needs the real ones → `test_cpsat.py` swaps them
+  back in via `real_modules`.

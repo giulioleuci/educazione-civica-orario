@@ -1,6 +1,6 @@
 # Generatore Sostituzioni per un Calendario di Educazione Civica
 
-Un algoritmo genetico per generare calendari ottimali di educazione civica per le scuole. Questo progetto (e questo README) è stato sviluppato con l'assistenza di strumenti di AI generativa (specialmente GPT-o1 Preview).
+Un modello OR-Tools CP-SAT per generare calendari ottimali di educazione civica per le scuole. Questo progetto (e questo README) è stato sviluppato con l'assistenza di strumenti di AI generativa (specialmente GPT-o1 Preview e Claude 5.5 Sonnet).
 
 ## Panoramica
 
@@ -19,7 +19,7 @@ Questo script genera un calendario di sostituzioni per l'educazione civica, con 
 
 Installazione dipendenze:
 ```bash
-pip install pandas numpy openpyxl
+pip install pandas numpy openpyxl ortools
 ```
 
 ## File di Input
@@ -59,8 +59,8 @@ Posizionare questi file CSV nella cartella dello script:
        data_fine_str='10/06/2025',
        ore_tot_civics=30,
        cartella_output="CALENDARIO_GENERATO",
-       num_generazioni=400,
-       popolazione_size=500
+       tempo_max_secondi=120,
+       num_cores=4
    )
    ```
 
@@ -77,23 +77,19 @@ Lo script genera nella cartella di output specificata:
 - `orario_classi.xlsx`: Sintesi settimanale per classe
 - `orario_docenti.xlsx`: Vista settimanale per docente
 
-Inoltre, ogni generazione crea una sottocartella con risultati intermedi.
-
 ## Dettagli Implementativi
 
-Il calendario viene generato utilizzando un algoritmo genetico che:
-1. Crea una popolazione iniziale usando approcci greedy, batch e random
-2. Evolve le soluzioni attraverso crossover e mutazione
-3. Valuta il fitness basandosi su metriche di qualità del calendario
-4. Implementa early stopping quando non vengono trovati miglioramenti
+Il calendario viene generato con OR-Tools CP-SAT:
+1. Le classi che non condividono docenti civics formano gruppi indipendenti (di norma uno per docente): un modello per gruppo
+2. Vincoli duri: `ore_tot_civics` ore per classe, al massimo 1 ora a settimana per classe, un docente in una sola classe alla volta
+3. L'obiettivo riproduce `calcola_fitness` (penalità a gradini come tabelle sulle ore perse, varianza come termine quadratico intero)
+4. Se non esiste una soluzione ammissibile entro il tempo limite lo script termina con errore
 
 ## Ottimizzazione Prestazioni
 
-Parametri regolabili per l'ottimizzazione:
-- `num_cores`: Numero di core CPU da utilizzare
-- `popolazione_size`: Dimensione della popolazione per generazione
-- `probabilita_mutazione`: Probabilità di mutazione
-- `num_generazioni`: Numero massimo di generazioni da eseguire
+Parametri regolabili:
+- `num_cores`: Numero di thread del solver
+- `tempo_max_secondi`: Tempo medio per ogni modello: il budget totale è questo valore × numero di modelli e il tempo non usato da un modello che dimostra l'ottimo passa ai successivi (si usa la migliore soluzione trovata)
 
 ## Licenza
 

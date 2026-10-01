@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------
-# Questo script utilizza un algoritmo genetico per generare un calendario di sostituzioni
+# Questo script utilizza OR-Tools CP-SAT per generare un calendario di sostituzioni
 # di docenti di educazione civica, in modo da distribuire in maniera più omogenea
 # le ore perse tra i docenti e le classi.
 #
@@ -21,15 +21,10 @@
 #  - orario_classi.xlsx: un file Excel per ogni classe, con una vista settimanale delle sostituzioni.
 #  - orario_docenti.xlsx: un file Excel per ogni docente di educazione civica, con una vista settimanale.
 #
-# **Organizzazione dell'Output:**
-#  Oltre ai file finali, ad ogni generazione dell'algoritmo genetico verrà creata una cartella
-#  denominata "generation_X" (dove X è il numero della generazione), contenente:
-#   - calendar.csv: il calendario di quella generazione
-#   - teachersLost.csv: le statistiche per quella generazione
-#   - orario_classi.xlsx e orario_docenti.xlsx: i file Excel con la pianificazione per classi e docenti
-#
-# In questo modo potremo monitorare il progresso dell'algoritmo e verificare come le soluzioni
-# si evolvono nel tempo.
+# **Metodo:**
+#  Le classi che non condividono docenti civics sono indipendenti (di norma un modello per docente):
+#  ogni gruppo è un modello CP-SAT con vincoli duri (ore totali, max 1 ora a settimana per classe,
+#  un docente in una sola classe alla volta) e la stessa fitness di calcola_fitness come obiettivo.
 #
 # -------------------------------------------------------------------------
 
@@ -39,12 +34,11 @@ import numpy as np
 from datetime import datetime, timedelta
 from collections import defaultdict
 import os
-import random
-import multiprocessing
 import logging
 import re
 import time
 from dataclasses import dataclass
+from ortools.sat.python import cp_model
 from openpyxl.styles import PatternFill, Border, Side, Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.pagebreak import Break
@@ -386,6 +380,11 @@ def genera_file_excel(calendario, classi_df, docenti_civics_df, cartella_output)
     genera_orario_docenti(calendario, docenti_civics_df, cartella_output)
 
 
+# Scala dell'obiettivo intero CP-SAT (fitness * SCALA_OBIETTIVO) e risoluzione delle percentuali (decimi di punto)
+SCALA_OBIETTIVO = 100_000
+DECIMI = 10
+
+
 def _formatta_durata(secondi):
     # Formatta una durata in secondi come "1h 05m 09s" / "5m 09s" / "9s"
     secondi = int(secondi)
@@ -405,25 +404,13 @@ class CalendarioConfig:
     data_fine_str: str = '10/06/2025'
     ore_tot_civics: int = 27
     cartella_output: str = "CALENDARIO_GENERATO"
-    num_generazioni: int = 200
-    early_stopping_n: int = 20
-    popolazione_size: int = 200
-    probabilita_mutazione: float = 0.2
-    probabilita_crossover: float = 0.8
-    elitismo_rate: float = 0.01
+    tempo_max_secondi: float = 120  # tempo medio per modello CP-SAT (budget totale = tempo * n. modelli)
     num_cores: int = 4
     allow_teacher_replace_self: bool = True
-    save_interval: int = 50
-    log_ogni_n_generazioni: int = 25
 
 
 class CalendarioGenerator:
-    # Classe principale che gestisce l'esecuzione dell'algoritmo genetico
-    # Probabilità per slot di spostare l'ora su un'altra settimana (unica mutazione che cambia la fitness):
-    # parte da ~2 spostamenti per figlio e aumenta con la stagnazione fino al massimo
-    base_probabilita_spostamento_slot = 0.002
-    max_probabilita_spostamento_slot = 0.02
-    probabilita_spostamento_slot = base_probabilita_spostamento_slot
+    # Classe principale che gestisce caricamento dati, risoluzione CP-SAT e salvataggio dei risultati
 
     def __init__(self, config: CalendarioConfig):
         # Inizializzazione dei parametri
@@ -434,27 +421,9 @@ class CalendarioGenerator:
         self.ore_tot_civics = config.ore_tot_civics
         # Sanitize cartella_output to prevent path traversal
         self.cartella_output = _sanitize_output_path(config.cartella_output)
-        self.num_generazioni = config.num_generazioni
-        self.early_stopping_n = config.early_stopping_n
-        self.popolazione_size = config.popolazione_size
-        self.probabilita_mutazione = config.probabilita_mutazione
-        self.probabilita_crossover = config.probabilita_crossover
-        self.elitismo_rate = config.elitismo_rate
+        self.tempo_max_secondi = config.tempo_max_secondi
         self.num_cores = config.num_cores
         self.allow_teacher_replace_self = config.allow_teacher_replace_self
-        self.save_interval = config.save_interval
-        self.log_ogni_n_generazioni = config.log_ogni_n_generazioni
-
-        # Backup degli hyperparams di base
-        self.base_probabilita_mutazione = config.probabilita_mutazione
-        self.base_probabilita_crossover = config.probabilita_crossover
-        self.base_elitismo_rate = config.elitismo_rate
-
-        self.hyperparams = {
-            'probabilita_mutazione': self.probabilita_mutazione,
-            'probabilita_crossover': self.probabilita_crossover,
-            'elitismo_rate': self.elitismo_rate
-        }
 
         # Stampa parametri di inizializzazione
         print("Parametri iniziali:")
@@ -463,35 +432,13 @@ class CalendarioGenerator:
         print(f"data_fine_str = {self.data_fine_str}")
         print(f"ore_tot_civics = {self.ore_tot_civics}")
         print(f"cartella_output = {self.cartella_output}")
-        print(f"num_generazioni = {self.num_generazioni}")
-        print(f"early_stopping_n = {self.early_stopping_n}")
-        print(f"popolazione_size = {self.popolazione_size}")
-        print(f"probabilita_mutazione = {self.probabilita_mutazione}")
-        print(f"probabilita_crossover = {self.probabilita_crossover}")
-        print(f"elitismo_rate = {self.elitismo_rate}")
+        print(f"tempo_max_secondi = {self.tempo_max_secondi}")
         print(f"num_cores = {self.num_cores}")
         print(f"allow_teacher_replace_self = {self.allow_teacher_replace_self}")
-        print(f"save_interval = {self.save_interval}")
-        print(f"log_ogni_n_generazioni = {self.log_ogni_n_generazioni}")
 
         # Caricamento dati e inizializzazione variabili
         self.load_data()
         self.initialize_variables()
-
-    def calcola_probabilita_mutazione(self, generazioni_senza_miglioramento):
-        # Aumenta gradualmente la probabilità di mutazione se non c'è miglioramento
-        base_prob = self.base_probabilita_mutazione
-        return min(0.5, base_prob * (1 + generazioni_senza_miglioramento / 10))
-
-    def calcola_probabilita_spostamento_slot(self, generazioni_senza_miglioramento):
-        # Aumenta gradualmente la probabilità di spostare gli slot se non c'è miglioramento
-        return min(self.max_probabilita_spostamento_slot,
-                   self.base_probabilita_spostamento_slot * (1 + generazioni_senza_miglioramento / 10))
-
-    def calcola_elitismo_rate(self, generazioni_senza_miglioramento):
-        # Aumenta gradualmente il tasso di elitismo se non c'è miglioramento
-        base_rate = self.base_elitismo_rate
-        return min(0.1, base_rate * (1 + generazioni_senza_miglioramento / 10))
 
     def load_data(self):
         # Caricamento dati da file CSV
@@ -561,7 +508,7 @@ class CalendarioGenerator:
             logging.info(
                 f"Fattibilità: OK sul numero di settimane (minimo {minimo} settimane con slot per classe, "
                 f"margine {minimo - self.ore_tot_civics}). Non verifica i conflitti tra docenti: "
-                f"l'esito si vede dalla popolazione iniziale.")
+                f"l'esito si vede dal solver CP-SAT.")
 
     def _init_date_scolastiche(self):
         # Creazione della lista di date scolastiche escludendo i giorni di chiusura
@@ -685,109 +632,119 @@ class CalendarioGenerator:
             total_teaching_hours = sum(ore_totali_docente.values())
             self.P_per_classe[classe] = (self.ore_tot_civics / total_teaching_hours) * 100 if total_teaching_hours > 0 else 0
 
+    def _componenti(self):
+        # Gruppi di classi indipendenti: classi che condividono (anche indirettamente) un docente civics
+        padre = {c: c for c in self.classi_list}
+
+        def radice(c):
+            while padre[c] != c:
+                c = padre[c]
+            return c
+
+        for classi in self.docenti_civics_classi.values():
+            for c in classi[1:]:
+                padre[radice(c)] = radice(classi[0])
+        gruppi = defaultdict(list)
+        for c in self.classi_list:
+            gruppi[radice(c)].append(c)
+        return list(gruppi.values())
+
+    def risolvi(self):
+        # Risolve un modello CP-SAT per ogni gruppo indipendente di classi e unisce le soluzioni
+        # Il tempo è un budget unico (tempo_max_secondi * n. modelli): quello non usato da un modello che
+        # dimostra l'ottimo viene ripartito in parti uguali tra i modelli rimasti
+        individuo = {}
+        componenti = self._componenti()
+        residuo = self.tempo_max_secondi * len(componenti)
+        for i, classi in enumerate(componenti):
+            inizio = time.monotonic()
+            individuo.update(self._risolvi_componente(classi, residuo / (len(componenti) - i)))
+            residuo -= time.monotonic() - inizio
+        return individuo
+
+    def _risolvi_componente(self, classi, tempo_max_secondi):
+        # Modello CP-SAT: x[slot, docente] = il docente civics copre lo slot. Obiettivo = fitness * SCALA_OBIETTIVO
+        # (penalità a gradini e penalità sulle percentuali alte come tabelle sulle ore perse per docente,
+        # varianza come termine quadratico intero sulle percentuali in decimi di punto)
+        inizio = time.time()
+        m = cp_model.CpModel()
+        x = {}
+        occupati = defaultdict(list)  # (data, ora, docente) -> variabili: un docente in una sola classe alla volta
+        costo = []
+        for classe in classi:
+            sel = {}  # chiave slot -> 1 se lo slot è usato da un docente civics
+            for s in self.slots_by_class[classe]:
+                vs = []
+                for d in self._docenti_disponibili(s):
+                    v = x[s['KEY'], d] = m.NewBoolVar(f"x_{s['KEY']}_{d}")
+                    occupati[s['DATA'], s['ORA'], d].append(v)
+                    vs.append(v)
+                sel[s['KEY']] = sum(vs)
+            m.Add(sum(sel.values()) == self.ore_tot_civics)
+            per_settimana = defaultdict(list)
+            for s in self.slots_by_class[classe]:
+                per_settimana[s['SETTIMANA']].append(sel[s['KEY']])
+            for expr in per_settimana.values():
+                m.Add(sum(expr) <= 1)
+
+            percentuali = []
+            for docente, ore_totali in self.ore_totali_docente_per_classe[classe].items():
+                max_perse = min(ore_totali, self.ore_tot_civics)
+                perse = m.NewIntVar(0, max_perse, f"perse_{classe}_{docente}")
+                m.Add(perse == sum(sel[s['KEY']] for s in self.slots_by_class[classe]
+                                   if s['DOCENTE_SOSTITUITO'] == docente))
+                tab = [self._penalita_docente(classe, docente, l) for l in range(max_perse + 1)]
+                costo_l = [round((p + mp) * SCALA_OBIETTIVO) for p, mp, _ in tab]
+                pc_l = [round(pct * DECIMI) for _, _, pct in tab]
+                c = m.NewIntVar(min(costo_l), max(costo_l), "")
+                pc = m.NewIntVar(min(pc_l), max(pc_l), "")
+                sq = m.NewIntVar(min(p * p for p in pc_l), max(p * p for p in pc_l), "")
+                m.AddElement(perse, costo_l, c)
+                m.AddElement(perse, pc_l, pc)
+                m.AddElement(perse, [p * p for p in pc_l], sq)
+                costo.append(c)
+                percentuali.append((pc, sq, max(pc_l)))
+
+            # n² * varianza * DECIMI² = n * Σ pc² - (Σ pc)²
+            n = len(percentuali)
+            max_somma = sum(p[2] for p in percentuali)
+            somma = m.NewIntVar(0, max_somma, "")
+            m.Add(somma == sum(p[0] for p in percentuali))
+            somma2 = m.NewIntVar(0, max_somma ** 2, "")
+            m.AddMultiplicationEquality(somma2, [somma, somma])
+            coef = round(5 * SCALA_OBIETTIVO / (n * n * DECIMI * DECIMI))
+            varianza = m.NewIntVar(0, n * sum(p[2] ** 2 for p in percentuali), "")  # >= 0: stringe il limite inferiore
+            m.Add(varianza == n * sum(p[1] for p in percentuali) - somma2)
+            costo.append(coef * varianza)
+
+        for vs in occupati.values():
+            m.AddAtMostOne(vs)
+        m.Minimize(sum(costo))
+
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = tempo_max_secondi
+        solver.parameters.num_workers = self.num_cores
+        stato = solver.Solve(m)
+        nome = ', '.join(_sanitize_for_logging(c) for c in classi)
+        if stato not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            logging.error(f"Nessuna soluzione per le classi {nome} ({solver.StatusName(stato)}): "
+                          f"vincoli incompatibili o tempo_max_secondi troppo basso.")
+            raise SystemExit(1)
+        logging.info(f"Classi {nome}: {solver.StatusName(stato)}, fitness {solver.ObjectiveValue() / SCALA_OBIETTIVO:.1f} "
+                     f"(limite inferiore {solver.BestObjectiveBound() / SCALA_OBIETTIVO:.1f}) in {_formatta_durata(time.time() - inizio)}")
+        return {key: d for (key, d), v in x.items() if solver.Value(v)}
+
     def genera_calendario(self):
-        # Funzione principale che esegue l'algoritmo genetico, genera popolazione,
-        # esegue crossover, mutazione, selezione e infine salva i risultati
-
+        # Risolve il problema con CP-SAT e salva i risultati
         inizio_esecuzione = time.time()
-        logging.info("Inizializzazione della popolazione...")
-        self.initialize_population()
+        logging.info("Risoluzione con CP-SAT...")
+        individuo = self.risolvi()
+        if not self.verifica_vincoli(individuo):
+            logging.error("La soluzione CP-SAT non rispetta i vincoli.")
+            raise SystemExit(1)
+        calendario = self.create_calendario(individuo)
 
-        if len(self.population) == 0:
-            logging.error("Impossibile generare una popolazione iniziale valida.")
-            return
-
-        migliore_fitness = float('inf')
-        migliore_individuo = None
-        generazioni_senza_miglioramento = 0
-        generazioni_eseguite = 0
-        motivo_arresto = "limite di generazioni raggiunto"
-        fitness_riga_precedente = None  # fitness all'ultima riga di avanzamento
-        fitness_ultimo_evento = None    # fitness all'ultimo miglioramento significativo loggato
-        soglia_miglioramento = 0.01     # logga un evento solo se la fitness scende di almeno l'1%
-
-        logging.info("Esecuzione dell'algoritmo genetico...")
-        for generazione in range(self.num_generazioni):
-            generazioni_eseguite = generazione + 1
-
-            # Aggiorna probabilità di mutazione ed elitismo in base alla mancata miglioria
-            self.probabilita_mutazione = self.calcola_probabilita_mutazione(generazioni_senza_miglioramento)
-            self.hyperparams['probabilita_mutazione'] = self.probabilita_mutazione
-            self.probabilita_spostamento_slot = self.calcola_probabilita_spostamento_slot(generazioni_senza_miglioramento)
-
-            self.evaluate_population()
-            self.population.sort(key=lambda x: x['fitness'])
-
-            num_elite = max(1, int(self.calcola_elitismo_rate(generazioni_senza_miglioramento) * self.popolazione_size))
-            elite = self.population[:num_elite]
-
-            # Controllo miglioramento
-            if self.population[0]['fitness'] < migliore_fitness:
-                migliore_fitness = self.population[0]['fitness']
-                migliore_individuo = self.population[0]['individuo']
-                generazioni_senza_miglioramento = 0
-                if fitness_ultimo_evento is None:
-                    logging.info(f"Generazione {generazioni_eseguite}: fitness iniziale {migliore_fitness:.1f}")
-                    fitness_ultimo_evento = migliore_fitness
-                elif migliore_fitness <= fitness_ultimo_evento * (1 - soglia_miglioramento):
-                    logging.info(f"Generazione {generazioni_eseguite}: miglioramento significativo, fitness "
-                                 f"{fitness_ultimo_evento:.1f} -> {migliore_fitness:.1f}")
-                    fitness_ultimo_evento = migliore_fitness
-            else:
-                generazioni_senza_miglioramento += 1
-
-            # Avanzamento periodico
-            if self.log_ogni_n_generazioni > 0 and generazioni_eseguite % self.log_ogni_n_generazioni == 0:
-                trascorso = time.time() - inizio_esecuzione
-                rimanente = trascorso / generazioni_eseguite * (self.num_generazioni - generazioni_eseguite)
-                variazione = "" if fitness_riga_precedente is None else f" ({migliore_fitness - fitness_riga_precedente:+.1f})"
-                logging.info(f"Gen {generazioni_eseguite}/{self.num_generazioni} | miglior fitness {migliore_fitness:.1f}{variazione} | "
-                             f"senza miglioramento {generazioni_senza_miglioramento}/{self.early_stopping_n} | "
-                             f"trascorso {_formatta_durata(trascorso)} | rimanente al massimo ~{_formatta_durata(rimanente)}")
-                fitness_riga_precedente = migliore_fitness
-
-            # Early stopping se nessun miglioramento
-            if generazioni_senza_miglioramento >= self.early_stopping_n:
-                logging.info("Early stopping attivato.")
-                motivo_arresto = f"early stopping ({self.early_stopping_n} generazioni senza miglioramento)"
-                break
-
-            # Ricombinazione e mutazione per generare la nuova popolazione
-            self.select_and_generate_new_population(elite)
-
-            # -------------------------------------------
-            # Salvataggio dei risultati della generazione corrente
-            # -------------------------------------------
-            if self.save_interval > 0 and (generazione + 1) % self.save_interval == 0:
-                generation_dir = os.path.join(self.cartella_output, f"generation_{generazione+1}")
-                os.makedirs(generation_dir, exist_ok=True)
-
-                best_individual = self.population[0]['individuo']
-                best_calendario = self.create_calendario(best_individual)
-
-                # Salva calendar.csv
-                calendario_df = pd.DataFrame(best_calendario)
-                calendario_df = _sanitize_for_excel(calendario_df)
-                calendario_df.to_csv(os.path.join(generation_dir, 'calendar.csv'), index=False)
-
-                # Calcola e salva teachersLost.csv per questa generazione
-                statistiche_classi = self.calcola_statistiche(best_calendario)
-                statistiche_df = pd.DataFrame(statistiche_classi)
-                statistiche_df = _sanitize_for_excel(statistiche_df)
-                statistiche_df.to_csv(os.path.join(generation_dir, 'teachersLost.csv'), index=False)
-
-                # Genera i file Excel anche per la generazione intermedia
-                genera_file_excel(best_calendario, self.classi_df, self.docenti_civics_df, generation_dir)
-
-        logging.info("Migliore individuo trovato con fitness: {}".format(migliore_fitness))
-
-        # -------------------------
-        # Salvataggio finale
-        # -------------------------
-        calendario = self.create_calendario(migliore_individuo)
-
-        if not os.path.exists(self.cartella_output):
-            os.makedirs(self.cartella_output)
+        os.makedirs(self.cartella_output, exist_ok=True)
 
         logging.info("Salvataggio del calendario finale in calendar.csv...")
         calendario_df = pd.DataFrame(calendario)
@@ -805,9 +762,8 @@ class CalendarioGenerator:
         logging.info("File Excel finali generati con successo!")
 
         logging.info("===== Riepilogo finale =====")
-        logging.info(f"Generazioni eseguite: {generazioni_eseguite}/{self.num_generazioni} - motivo arresto: {motivo_arresto}")
-        logging.info(f"Fitness finale: {migliore_fitness:.1f} - tempo totale: {_formatta_durata(time.time() - inizio_esecuzione)}")
-        self._log_controllo_coerenza(migliore_individuo)
+        logging.info(f"Fitness finale: {self.calcola_fitness(individuo):.1f} - tempo totale: {_formatta_durata(time.time() - inizio_esecuzione)}")
+        self._log_controllo_coerenza(individuo)
 
     def _log_controllo_coerenza(self, individuo):
         # Controllo finale: ore per classe, max 1 ora a settimana per classe, nessun docente in due classi insieme
@@ -862,87 +818,6 @@ class CalendarioGenerator:
                 })
         return statistiche_classi
 
-    def initialize_population(self):
-        # Generazione della popolazione iniziale con approcci diversi (greedy, batch, random)
-        self.population = []
-        tentativi = 0
-        max_tentativi = self.popolazione_size * 100
-
-        num_greedy = int(0.3 * self.popolazione_size)
-        num_batch = int(0.3 * self.popolazione_size)
-        num_random = self.popolazione_size - num_greedy - num_batch
-
-        with multiprocessing.Pool(processes=self.num_cores, initializer=init_worker, initargs=(self,)) as pool:
-            # Generazione con approccio greedy
-            logging.info("Generazione popolazione iniziale con approccio greedy...")
-            tentativi = 0  # tentativi separati per fase: una strategia che fallisce non deve bloccare le altre
-            max_tentativi = self.num_cores  # strategia deterministica: ripetere i tentativi darebbe sempre lo stesso risultato
-            while len(self.population) < num_greedy and tentativi < max_tentativi:
-                batch_size = min(num_greedy - len(self.population), self.num_cores)
-                results = pool.map(genera_individuo_greedy_helper, [None] * batch_size)
-                for individuo in results:
-                    if individuo is not None:
-                        self.population.append({'individuo': individuo})
-                tentativi += batch_size
-            esiti = [("greedy", len(self.population), tentativi)]
-
-            # Generazione con approccio per fasce (batch)
-            logging.info("Generazione popolazione iniziale con approccio per fasce...")
-            tentativi = 0  # tentativi separati per fase: una strategia che fallisce non deve bloccare le altre
-            max_tentativi = self.num_cores  # strategia deterministica: ripetere i tentativi darebbe sempre lo stesso risultato
-            validi_prima = len(self.population)
-            while len(self.population) < num_greedy + num_batch and tentativi < max_tentativi:
-                batch_size = min(num_batch - (len(self.population) - num_greedy), self.num_cores)
-                results = pool.map(genera_individuo_batch_helper, [None] * batch_size)
-                for individuo in results:
-                    if individuo is not None:
-                        self.population.append({'individuo': individuo})
-                tentativi += batch_size
-            esiti.append(("batch", len(self.population) - validi_prima, tentativi))
-
-            # Generazione con approccio random
-            logging.info("Generazione popolazione iniziale con approccio casuale...")
-            tentativi = 0
-            max_tentativi = self.popolazione_size * 100
-            validi_prima = len(self.population)
-            while len(self.population) < self.popolazione_size and tentativi < max_tentativi:
-                batch_size = min(self.popolazione_size - len(self.population), self.num_cores)
-                results = pool.map(genera_individuo_random_helper, [None] * batch_size)
-                for individuo in results:
-                    if individuo is not None:
-                        self.population.append({'individuo': individuo})
-                tentativi += batch_size
-            esiti.append(("random", len(self.population) - validi_prima, tentativi))
-
-        logging.info("Popolazione iniziale (individui validi/tentativi): "
-                     + ", ".join(f"{nome} {validi}/{tent}" for nome, validi, tent in esiti))
-
-    def evaluate_population(self):
-        # Calcolo della fitness per ogni individuo della popolazione in parallelo
-        with multiprocessing.Pool(processes=self.num_cores, initializer=init_worker, initargs=(self,)) as pool:
-            fitness_results = pool.map(calcola_fitness_helper, [ind['individuo'] for ind in self.population])
-        for i, fit in enumerate(fitness_results):
-            self.population[i]['fitness'] = fit
-
-    def select_and_generate_new_population(self, elite):
-        # Selezione e generazione nuova popolazione
-        selected = self.selezione([ind['individuo'] for ind in self.population], [ind['fitness'] for ind in self.population])
-        new_population = elite.copy()
-        while len(new_population) < self.popolazione_size:
-            genitore1 = random.choice(selected)
-            genitore2 = random.choice(selected)
-            if random.random() < self.probabilita_crossover:
-                figlio = self.crossover(genitore1, genitore2)
-            else:
-                figlio = genitore1.copy()
-
-            figlio = self.mutazione(figlio)
-
-            if self.verifica_vincoli(figlio):
-                new_population.append({'individuo': figlio})
-
-        self.population = new_population
-
     def create_calendario(self, individuo):
         # Crea la lista di dizionari rappresentante il calendario dall'individuo
         calendario = []
@@ -957,79 +832,6 @@ class CalendarioGenerator:
                 'DOCENTE_SOSTITUITO': slot_info['DOCENTE_SOSTITUITO']
             })
         return calendario
-
-    def genera_individuo_random(self, _):
-        return self.genera_individuo_base(strategy='random')
-
-    def genera_individuo_greedy(self, _):
-        return self.genera_individuo_base(strategy='greedy')
-
-    def genera_individuo_batch(self, _):
-        return self.genera_individuo_base(strategy='batch')
-
-    def genera_individuo_base(self, strategy='random'):
-        # Genera un individuo con la strategia indicata (greedy, batch, random)
-        individuo = {}
-        ore_per_classe = defaultdict(int)
-        occupati = set()  # (data, ora, docente): un docente può stare in una sola classe alla volta
-        ore_settimanali_classe = defaultdict(lambda: defaultdict(int))
-
-        if strategy == 'greedy':
-            slot_copia = sorted(self.slot_disponibili, key=lambda x: x['DATA'])
-        elif strategy == 'batch':
-            slot_copia = sorted(self.slot_disponibili, key=lambda x: (x['CLASSE'], x['DATA']))
-        else:
-            slot_copia = self.slot_disponibili.copy()
-            random.shuffle(slot_copia)
-
-        # Assegna docenti civics in base alla strategia
-        for slot in slot_copia:
-            nome_classe = slot['CLASSE']
-            data = slot['DATA']
-            settimana = slot['SETTIMANA']
-
-            # Controlla limite di ore totali e settimanali
-            if ore_per_classe[nome_classe] >= self.ore_tot_civics:
-                continue
-            if ore_settimanali_classe[nome_classe][settimana] >= 1:
-                continue
-
-            nome_giorno = slot['GIORNO']
-            ora = slot['ORA']
-            slot_key = slot['KEY']
-            docente_sostituito = slot['DOCENTE_SOSTITUITO']
-
-            # Trova docenti civics possibili
-            docenti_possibili = []
-            for docente_civics in self.docenti_per_classe[nome_classe]:
-                disponibile = False
-                if (docente_civics in self.docenti_civics_organico[nome_classe]) and (docente_civics == docente_sostituito):
-                    # Se il docente civics insegna anche la materia e coincide con il docente sostituito
-                    disponibile = True
-                else:
-                    # Controlla disponibilità sul giorno e ora
-                    if len(self.disponibilita_civics[docente_civics][nome_giorno]) >= ora and \
-                        self.disponibilita_civics[docente_civics][nome_giorno][ora - 1]:
-                        disponibile = True
-
-                    # Controllo se il docente non insegna due ore nello stesso giorno alla stessa ora
-                    if disponibile and (data, ora, docente_civics) not in occupati:
-                        docenti_possibili.append(docente_civics)
-
-            if docenti_possibili:
-                if strategy == 'greedy':
-                    docente_assegnato = docenti_possibili[0]
-                else:
-                    docente_assegnato = random.choice(docenti_possibili)
-                individuo[slot_key] = docente_assegnato
-                ore_per_classe[nome_classe] += 1
-                ore_settimanali_classe[nome_classe][settimana] += 1
-                occupati.add((data, ora, docente_assegnato))
-
-        if self.verifica_vincoli(individuo):
-            return individuo
-        else:
-            return None
 
     def verifica_vincoli(self, individuo):
         # Verifica se l'individuo rispetta i vincoli (ore tot per classe, max 1 ora a settimana per classe,
@@ -1069,11 +871,9 @@ class CalendarioGenerator:
             total_deviation += sum(max(0, ore - 1) for ore in ore_per_settimana.values())
         return total_deviation
 
-    def _calcola_penalita_classe(self, classe, ore_perse_docente):
-        variance_total = 0
-        max_percentage_penalty = 0
-        penalties_total = 0
-
+    def _penalita_docente(self, classe, docente, ore_perse):
+        # Penalità a gradini e penalità sulle percentuali alte per un docente sostituito in una classe.
+        # Ritorna (penalità a gradini, penalità percentuale alta, percentuale di ore perse)
         medium_intensity_penalty = 5
         high_intensity_penalty = 10
         low_intensity_penalty = 1
@@ -1083,47 +883,39 @@ class CalendarioGenerator:
         high_intensity_penalty_civics_teacher = 20
         low_intensity_penalty_civics_teacher = 0.5
 
-        # Utilizza il lookup pre-calcolato invece della scansione O(N)
-        ore_totali_docente = self.ore_totali_docente_per_classe[classe]
         P = self.P_per_classe.get(classe, 0)
-        docenti_organico = self.docenti_civics_organico[classe]
+        ore_totali = self.ore_totali_docente_per_classe[classe][docente]
+        percentuale_perse = (ore_perse / ore_totali) * 100 if ore_totali > 0 else 0
+        is_organico = docente in self.docenti_civics_organico[classe]
 
+        penalita = 0
+        # Penalità in base alla percentuale di ore perse
+        if percentuale_perse > 2 * P:
+            penalita = high_intensity_penalty_civics_teacher if is_organico else high_intensity_penalty
+        elif percentuale_perse > P:
+            penalita = medium_intensity_penalty_civics_teacher if is_organico else medium_intensity_penalty
+        elif percentuale_perse < 0.3 * P:
+            penalita = low_intensity_penalty_civics_teacher if is_organico else low_intensity_penalty
+
+        # Penalità per percentuali molto alte
+        penalita_alta = (percentuale_perse - 5) * 10 if is_organico and percentuale_perse > 5 else 0
+        return penalita, penalita_alta, percentuale_perse
+
+    def _calcola_penalita_classe(self, classe, ore_perse_docente):
+        penalties_total = 0
+        max_percentage_penalty = 0
         percentuali = []
-        for docente in ore_totali_docente:
-            ore_totali = ore_totali_docente[docente]
-            ore_perse = ore_perse_docente.get(docente, 0)
-            percentuale_perse = (ore_perse / ore_totali) * 100 if ore_totali > 0 else 0
-            percentuali.append(percentuale_perse)
+        for docente in self.ore_totali_docente_per_classe[classe]:
+            p, mp, percentuale = self._penalita_docente(classe, docente, ore_perse_docente.get(docente, 0))
+            penalties_total += p
+            max_percentage_penalty += mp
+            percentuali.append(percentuale)
 
-            is_organico = docente in docenti_organico
-
-            # Penalità in base alla percentuale di ore perse
-            if percentuale_perse > 2 * P:
-                if is_organico:
-                    penalties_total += high_intensity_penalty_civics_teacher
-                else:
-                    penalties_total += high_intensity_penalty
-            elif percentuale_perse > P:
-                if is_organico:
-                    penalties_total += medium_intensity_penalty_civics_teacher
-                else:
-                    penalties_total += medium_intensity_penalty
-            elif percentuale_perse < 0.3 * P:
-                if is_organico:
-                    penalties_total += low_intensity_penalty_civics_teacher
-                else:
-                    penalties_total += low_intensity_penalty
-
-            # Penalità per percentuali molto alte
-            if is_organico:
-                if percentuale_perse > 5:
-                    max_percentage_penalty += (percentuale_perse - 5) * 10
-
+        variance_total = 0
         if percentuali:
             n = len(percentuali)
             mean = sum(percentuali) / n
-            variance = sum((x - mean) ** 2 for x in percentuali) / n
-            variance_total += variance
+            variance_total = sum((x - mean) ** 2 for x in percentuali) / n
 
         return variance_total, max_percentage_penalty, penalties_total
 
@@ -1162,41 +954,6 @@ class CalendarioGenerator:
         total_fitness = total_deviation * 10 + variance_total * 5 + max_percentage_penalty + penalties_total
         return total_fitness
 
-    def selezione(self, popolazione, fitness):
-        # Selezione con ranking
-        popolazione_fitness = list(zip(popolazione, fitness))
-        popolazione_fitness.sort(key=lambda x: x[1])
-        ranks = range(len(popolazione), 0, -1)
-        total_rank = sum(ranks)
-        selection_probs = [rank / total_rank for rank in ranks]
-        popolazione_sorted = [ind for ind, fit in popolazione_fitness]
-        selected = random.choices(popolazione_sorted, weights=selection_probs, k=len(popolazione))
-        return selected
-
-    def crossover(self, genitore1, genitore2):
-        # Crossover: unisce parti di genitore1 e genitore2
-        figlio = {}
-        blocks = self.identify_blocks(genitore1, genitore2)
-        for block in blocks:
-            if random.random() < 0.5:
-                figlio.update(block['genitore1'])
-            else:
-                figlio.update(block['genitore2'])
-        return figlio
-
-    def identify_blocks(self, genitore1, genitore2):
-        # Identifica blocchi di chiavi da scambiare
-        keys = list(genitore1.keys())
-        random.shuffle(keys)
-        blocks = []
-        block_size = max(1, len(keys) // 10)
-        for i in range(0, len(keys), block_size):
-            block_keys = keys[i:i+block_size]
-            block_gen1 = {k: genitore1[k] for k in block_keys}
-            block_gen2 = {k: genitore2.get(k, genitore1[k]) for k in block_keys}
-            blocks.append({'genitore1': block_gen1, 'genitore2': block_gen2})
-        return blocks
-
     def _docenti_disponibili(self, slot):
         # Docenti civics che possono coprire lo slot (disponibilità oraria), senza controllare i conflitti
         nome_classe = slot['CLASSE']
@@ -1217,98 +974,6 @@ class CalendarioGenerator:
                 docenti_possibili.append(docente_civics)
         return docenti_possibili
 
-    def mutazione(self, individuo):
-        # Mutazione: cambia il docente assegnato e, con bassa probabilità, sposta lo slot di una classe
-        # su un'altra settimana libera. Se il docente è occupato con un'altra classe, prova a spostare
-        # anche quella (scambio). Mantiene il vincolo "un docente in una sola classe alla volta".
-        occupati = {}  # (data, ora, docente) -> chiave dello slot che lo occupa
-        settimane_classe = defaultdict(set)
-        for key, docente_civics in individuo.items():
-            slot_info = self.slots_by_key[key]
-            occupati[(slot_info['DATA'], slot_info['ORA'], docente_civics)] = key
-            settimane_classe[slot_info['CLASSE']].add(slot_info['SETTIMANA'])
-
-        def slot_candidato(slot_vecchio):
-            # Slot casuale della stessa classe, non usato, in una settimana libera (o nella stessa dello slot)
-            nuovo = random.choice(self.slots_by_class[slot_vecchio['CLASSE']])
-            if nuovo['KEY'] in individuo:
-                return None
-            if nuovo['SETTIMANA'] != slot_vecchio['SETTIMANA'] and nuovo['SETTIMANA'] in settimane_classe[slot_vecchio['CLASSE']]:
-                return None
-            return nuovo
-
-        def docenti_liberi(nuovo):
-            return [d for d in self._docenti_disponibili(nuovo) if (nuovo['DATA'], nuovo['ORA'], d) not in occupati]
-
-        def sposta(vecchia_key, nuovo, docente_nuovo):
-            vecchio = self.slots_by_key[vecchia_key]
-            occupati.pop((vecchio['DATA'], vecchio['ORA'], individuo.pop(vecchia_key)), None)
-            individuo[nuovo['KEY']] = docente_nuovo
-            occupati[(nuovo['DATA'], nuovo['ORA'], docente_nuovo)] = nuovo['KEY']
-            settimane_classe[vecchio['CLASSE']].discard(vecchio['SETTIMANA'])
-            settimane_classe[vecchio['CLASSE']].add(nuovo['SETTIMANA'])
-
-        def prova_scambio(key, nuovo):
-            # Libera lo slot "nuovo" spostando la classe che occupa uno dei docenti disponibili
-            occupanti = [(d, occupati[(nuovo['DATA'], nuovo['ORA'], d)]) for d in self._docenti_disponibili(nuovo)]
-            if not occupanti:
-                return False
-            docente, key_b = random.choice(occupanti)
-            slot_b = self.slots_by_key[key_b]
-            for _ in range(10):
-                nuovo_b = slot_candidato(slot_b)
-                if nuovo_b is not None and docente in docenti_liberi(nuovo_b):
-                    sposta(key_b, nuovo_b, docente)
-                    sposta(key, nuovo, docente)
-                    return True
-            return False
-
-        for key in list(individuo.keys()):
-            if key not in individuo:  # già spostato da uno scambio
-                continue
-            slot_info = self.slots_by_key[key]
-            data = slot_info['DATA']
-            ora = slot_info['ORA']
-
-            if random.random() < self.probabilita_mutazione:
-                docenti_possibili = [d for d in self._docenti_disponibili(slot_info)
-                                     if (data, ora, d) not in occupati or d == individuo[key]]
-                if docenti_possibili:
-                    occupati.pop((data, ora, individuo[key]), None)
-                    individuo[key] = random.choice(docenti_possibili)
-                    occupati[(data, ora, individuo[key])] = key
-
-            if random.random() < self.probabilita_spostamento_slot:
-                for _ in range(10):
-                    nuovo = slot_candidato(slot_info)
-                    if nuovo is None:
-                        continue
-                    liberi = docenti_liberi(nuovo)
-                    if liberi:
-                        sposta(key, nuovo, random.choice(liberi))
-                        break
-                    if prova_scambio(key, nuovo):
-                        break
-        return individuo
-
-
-_worker_instance = None
-
-def init_worker(instance):
-    global _worker_instance
-    _worker_instance = instance
-
-def genera_individuo_greedy_helper(args):
-    return _worker_instance.genera_individuo_greedy(args)
-
-def genera_individuo_batch_helper(args):
-    return _worker_instance.genera_individuo_batch(args)
-
-def genera_individuo_random_helper(args):
-    return _worker_instance.genera_individuo_random(args)
-
-def calcola_fitness_helper(individuo):
-    return _worker_instance.calcola_fitness(individuo)
 
 
 if __name__ == "__main__":
@@ -1318,19 +983,9 @@ if __name__ == "__main__":
         data_fine_str='10/06/2027',
         ore_tot_civics=31,
         cartella_output="CALENDARIO_GENERATO",
-        num_generazioni=9000,
-        early_stopping_n=300,
-        popolazione_size=500,
-        probabilita_mutazione=0.05,  # solo docenti: non cambia la fitness, costa tempo
-        probabilita_crossover=0.8,
-        elitismo_rate=0.005,
+        tempo_max_secondi=120,
         num_cores=15,
-        save_interval=500,
-        log_ogni_n_generazioni=25,
         allow_teacher_replace_self=True
     )
-    import multiprocessing
-    multiprocessing.set_start_method("fork")  # Python 3.14: default forkserver non funziona col Pool
     generator = CalendarioGenerator(config)
     generator.genera_calendario()
-

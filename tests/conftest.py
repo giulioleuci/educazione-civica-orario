@@ -4,6 +4,11 @@ from unittest.mock import MagicMock
 import importlib.util
 import os
 
+# ortools usa numpy/pandas reali: importati prima dei mock (test_cpsat li rimette in sys.modules)
+import numpy as real_np, pandas as real_pd
+real_modules = {'numpy': real_np, 'pandas': real_pd}
+from ortools.sat.python import cp_model  # noqa: F401
+
 # Mock dependencies
 mock_pd = MagicMock()
 sys.modules['pandas'] = mock_pd
@@ -68,3 +73,4 @@ generator_mod = importlib.util.module_from_spec(spec)
 # We need to add the module to sys.modules so it can be imported normally in tests
 sys.modules['generator_mod'] = generator_mod
 spec.loader.exec_module(generator_mod)
+
