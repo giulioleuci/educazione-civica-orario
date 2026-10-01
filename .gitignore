@@ -1,6 +1,7 @@
 
 CALENDARIO_GENERATO/
 *.csv
+*.tsv
 __pycache__/
 *.pyc
 .pytest_cache/

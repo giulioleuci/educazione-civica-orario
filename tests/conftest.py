@@ -55,6 +55,9 @@ sys.modules['numpy'] = mock_np
 sys.modules['openpyxl'] = MagicMock()
 sys.modules['openpyxl.styles'] = MagicMock()
 sys.modules['openpyxl.utils'] = MagicMock()
+sys.modules['openpyxl.worksheet'] = MagicMock()
+sys.modules['openpyxl.worksheet.properties'] = MagicMock()
+sys.modules['openpyxl.worksheet.pagebreak'] = MagicMock()
 
 # Path to the generator script
 script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../calendario-ed-civ-generator.py'))
