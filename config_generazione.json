@@ -1,0 +1,10 @@
+{
+  "num_varianti": 1,
+  "data_inizio_str": "01/09/2030",
+  "data_fine_str": "13/09/2030",
+  "tempo_max_secondi": 1,
+  "num_cores": 1,
+  "allow_teacher_replace_self": true,
+  "gap_relativo": 0.001,
+  "assegnazioni_fisse": []
+}

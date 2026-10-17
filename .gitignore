@@ -1,0 +1,15 @@
+
+CALENDARIO_GENERATO/
+FILE_SCUOLA/*
+!FILE_SCUOLA/.gitkeep
+FILE MINIMAX/
+EXP_COURS.txt
+*.csv
+*.tsv
+*.xlsx
+!examples/generatore/*.csv
+!examples/edt_aldo/*.tsv
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
