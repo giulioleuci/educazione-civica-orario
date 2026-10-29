@@ -10,7 +10,7 @@ comments/logs in Italian too.
 
 - Install deps (nothing is vendored): `pip install pandas numpy openpyxl ortools`
   (`numpy` is only used inside `_minimo_classe`, imported locally there; `pandas` + `openpyxl` do the rest.)
-- Tests: `python3 -m pytest tests -q` → 57 tests, ~3s. pytest is **not** installed in this
+- Tests: `python3 -m pytest tests -q` → ~100 tests, ~3s. pytest is **not** installed in this
   environment (`pip install pytest` first). Works from the repo root; no pytest config exists.
 - One file / one test: `python3 -m pytest tests/test_cpsat.py -q`, add `-k <name>` / `-x`.
 - `python3 run_test.py` runs **only** `tests/test_security.py`, not the whole suite.
@@ -50,6 +50,11 @@ comments/logs in Italian too.
   quadratically (`PESO_ECCESSO`), no flat tiers (flat tiers made the teacher with most hours lose ~2× P).
   Teachers with no candidate slot (lessons never in a civics DISPOS cell) lose 0 by data, so the others
   inevitably lose > P: ratio 1.1–1.6 is the floor, not a bug.
+- Ripetizioni: lo stesso `DOCENTE_SOSTITUITO` nella stessa classe non può esserlo in settimane consecutive (vincolo duro,
+  in `_risolvi_componente` e `verifica_vincoli`); a distanza 2 e 3 settimane c'è una penalità (`PENALITA_RIPETIZIONE`, in
+  `calcola_fitness` e nel modello come booleane `z`, fuori dalla fetta di costo usata dal limite inferiore). Le distanze usano
+  `indice_settimana` (ordine cronologico, il numero ISO riparte a gennaio) sulle settimane del calendario, non sulle sole
+  settimane con ora. Classe con un solo docente sostituibile (o assegnazioni fisse che violano il vincolo) → infeasible.
 - `_minimo_classe` = exact per-class minimum ignoring conflicts (DP), added as a lower-bound constraint per
   class. Without it CP-SAT's bound stays far below the optimum (e.g. 85 vs 278) and the gap never closes. It must
   use the same cost as the model (`_penalita_docente` tables + free-mean variance), else the bound is invalid.
