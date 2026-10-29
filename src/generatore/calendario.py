@@ -25,7 +25,9 @@
 # **Metodo:**
 #  Le classi che non condividono docenti civics sono indipendenti (di norma un modello per docente):
 #  ogni gruppo è un modello CP-SAT con vincoli duri (ore totali, max 1 ora a settimana per classe,
-#  un docente in una sola classe alla volta) e la stessa fitness di calcola_fitness come obiettivo.
+#  un docente in una sola classe alla volta, mai lo stesso docente sostituito in settimane consecutive nella
+#  stessa classe) e la stessa fitness di calcola_fitness come obiettivo (che penalizza anche le sostituzioni
+#  ripetute a 2 e 3 settimane di distanza, vedi PENALITA_RIPETIZIONE).
 #
 # -------------------------------------------------------------------------
 
@@ -34,6 +36,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from collections import defaultdict
+import itertools
 import os
 import logging
 import time
@@ -62,6 +65,9 @@ DECIMI = 10
 PESO_ECCESSO = 5
 # Riavvii (seed diverso, soluzione migliore come hint) se il gap rispetto al limite inferiore resta sopra gap_relativo
 TENTATIVI_MAX = 3
+# Penalità (in punti di fitness) se lo stesso docente è sostituito due volte nella stessa classe a questa distanza in
+# settimane (1 = settimane consecutive: vietato dal vincolo duro); oltre le distanze elencate non c'è penalità
+PENALITA_RIPETIZIONE = {2: 5, 3: 2}
 
 
 def _formatta_durata(secondi):
@@ -314,6 +320,12 @@ class CalendarioGenerator:
             for nome_classe in classi:
                 self.docenti_per_classe[nome_classe].append(docente_civics)
 
+        # Posizione cronologica delle settimane (il numero ISO ricomincia a gennaio): serve per misurare le distanze
+        prima_data = {}
+        for slot in self.slot_disponibili:
+            prima_data[slot['SETTIMANA']] = min(slot['DATA'], prima_data.get(slot['SETTIMANA'], slot['DATA']))
+        self.indice_settimana = {w: i for i, w in enumerate(sorted(prima_data, key=prima_data.get))}
+
         self._valida_assegnazioni_fisse()
         self._assegna_settimane()
         self.ore_per_classe = {c: len(w) for c, w in self.settimane_classe.items()}
@@ -483,6 +495,7 @@ class CalendarioGenerator:
         x = {}
         occupati = defaultdict(list)  # (data, ora, docente) -> variabili: un docente in una sola classe alla volta
         costo = []
+        costo_ripetizioni = []  # fuori da costo: il limite inferiore della classe non le conosce
         for classe in classi:
             inizio_classe = len(costo)
             sel = {}  # chiave slot -> 1 se lo slot è usato da un docente civics
@@ -501,6 +514,24 @@ class CalendarioGenerator:
                 per_settimana[s['SETTIMANA']].append(sel[s['KEY']])
             for settimana, expr in per_settimana.items():
                 m.Add(sum(expr) == (settimana in self.settimane_classe[classe]))
+
+            # Ripetizioni: lo stesso docente sostituito nella stessa classe in settimane vicine. Mai in settimane
+            # consecutive (duro); penalità graduata alle distanze in PENALITA_RIPETIZIONE
+            sostituito = defaultdict(list)  # (docente sostituito, indice settimana) -> espressioni degli slot
+            for s in self.slots_by_class[classe]:
+                if s['SETTIMANA'] in self.settimane_classe[classe] and self._docenti_disponibili(s):
+                    sostituito[s['DOCENTE_SOSTITUITO'], self.indice_settimana[s['SETTIMANA']]].append(sel[s['KEY']])
+            for (docente, i), expr in sostituito.items():
+                for distanza in (1, *PENALITA_RIPETIZIONE):
+                    if (docente, i + distanza) not in sostituito:
+                        continue
+                    insieme = sum(expr) + sum(sostituito[docente, i + distanza])
+                    if distanza == 1:
+                        m.Add(insieme <= 1)
+                    else:
+                        z = m.NewBoolVar("")
+                        m.Add(insieme - 1 <= z)
+                        costo_ripetizioni.append(round(PENALITA_RIPETIZIONE[distanza] * SCALA_OBIETTIVO) * z)
 
             percentuali = []  # (percentuale in decimi come espressione, massimo)
             for docente, ore_totali in self.ore_totali_docente_per_classe[classe].items():
@@ -534,7 +565,7 @@ class CalendarioGenerator:
 
         for vs in occupati.values():
             m.AddAtMostOne(vs)
-        m.Minimize(sum(costo))
+        m.Minimize(sum(costo) + sum(costo_ripetizioni))
 
         # Tentativi con seed diversi e la soluzione migliore come hint, finché il gap resta sopra gap_relativo
         migliore, obiettivo, limite, stato_migliore = None, float('inf'), 0, None
@@ -672,7 +703,7 @@ class CalendarioGenerator:
 
     def verifica_vincoli(self, individuo):
         # Verifica se l'individuo rispetta i vincoli (ore tot per classe, max 1 ora a settimana per classe,
-        # un docente in una sola classe alla volta)
+        # un docente in una sola classe alla volta, mai lo stesso docente sostituito in settimane consecutive)
         ore_per_classe = defaultdict(int)
         ore_settimanali_classe = defaultdict(lambda: defaultdict(int))
         occupati = set()
@@ -698,12 +729,29 @@ class CalendarioGenerator:
                 return False
             occupati.add(chiave_occupato)
 
+        if self._ripetizioni_consecutive(individuo):
+            return False
+
         # Ogni classe deve avere esattamente un'ora in ogni settimana utile
         if not all(ore_per_classe[nome_classe] == self.ore_per_classe[nome_classe]
                    for nome_classe in self.classi_list):
             return False
 
         return True
+
+    def _ripetizioni(self, individuo):
+        # Coppie di sostituzioni dello stesso docente nella stessa classe: lista di distanze in settimane
+        settimane = defaultdict(set)  # (classe, docente sostituito) -> indici delle settimane
+        for slot_key in individuo:
+            slot = self.slots_by_key[slot_key]
+            settimane[slot['CLASSE'], slot['DOCENTE_SOSTITUITO']].add(self.indice_settimana[slot['SETTIMANA']])
+        return [b - a for sett in settimane.values() for a, b in itertools.combinations(sorted(sett), 2)]
+
+    def _ripetizioni_consecutive(self, individuo):
+        return 1 in self._ripetizioni(individuo)
+
+    def _penalita_ripetizioni(self, individuo):
+        return sum(PENALITA_RIPETIZIONE.get(d, 0) for d in self._ripetizioni(individuo))
 
     def _calcola_deviazione_totale(self, ore_settimanali_classe):
         total_deviation = 0
@@ -788,7 +836,8 @@ class CalendarioGenerator:
             max_percentage_penalty += max_p
             penalties_total += p_tot
 
-        total_fitness = total_deviation * 10 + variance_total * 5 + max_percentage_penalty + penalties_total
+        total_fitness = (total_deviation * 10 + variance_total * 5 + max_percentage_penalty + penalties_total
+                         + self._penalita_ripetizioni(individuo))
         return total_fitness
 
     def _docenti_disponibili(self, slot):

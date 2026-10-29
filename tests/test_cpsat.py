@@ -28,7 +28,7 @@ class Gen(CalendarioGenerator):
         self.assegnazioni_fisse = [] if assegnazioni_fisse is None else assegnazioni_fisse
         self.giorni_settimana = ['LUN']
         self.docenti_civics_organico = defaultdict(set)
-        self.disponibilita_civics = {d: {'LUN': [True, True]} for d in docenti_classi}
+        self.disponibilita_civics = {d: {'LUN': [True] * 4} for d in docenti_classi}
         base = datetime(2026, 10, 5)  # lunedì
         self.slot_disponibili = [
             {'CLASSE': c, 'DATA': base + timedelta(weeks=w), 'GIORNO': 'LUN', 'ORA': ora,
@@ -49,7 +49,10 @@ def _brute_force(gen, docente):
         slots = [s for scelta in combo for s in scelta]
         if len({(s['DATA'], s['ORA']) for s in slots}) != len(slots):
             continue
-        migliore = min(migliore, gen.calcola_fitness({s['KEY']: docente for s in slots}))
+        individuo = {s['KEY']: docente for s in slots}
+        if gen._ripetizioni_consecutive(individuo):
+            continue
+        migliore = min(migliore, gen.calcola_fitness(individuo))
     return migliore
 
 
@@ -116,7 +119,8 @@ def test_penalita_eccesso_senza_soglie_piatte():
     assert all(b > a for a, b in zip(pen, pen[1:]))
 
 
-def test_minimo_classe_uguale_all_ottimo_con_una_classe():
+def test_minimo_classe_uguale_all_ottimo_con_una_classe(monkeypatch):
+    monkeypatch.setattr(generator_mod, 'PENALITA_RIPETIZIONE', {})  # il limite inferiore non le conosce
     slot = {'A': [(1, 1, 'X'), (2, 1, 'Y'), (3, 1, 'X'), (3, 2, 'Z'), (4, 1, 'Y')]}
     gen = Gen(['A'], {'C': ['A']}, slot)
     assert gen._minimo_classe('A') == pytest.approx(_brute_force(gen, 'C'), abs=0.05)
@@ -211,3 +215,66 @@ def test_assegnazione_fissa_rispetta_disponibilita_e_sostituzione_propria(docent
     gen.assegnazioni_fisse = [FISSA]
     with pytest.raises(SystemExit):
         gen._precalcola_lookups()
+
+
+def _sostituzioni(gen, individuo):
+    # {docente sostituito: [settimane]} della classe A
+    out = defaultdict(list)
+    for k in individuo:
+        out[gen.slots_by_key[k]['DOCENTE_SOSTITUITO']].append(gen.slots_by_key[k]['SETTIMANA'])
+    return {d: sorted(w) for d, w in out.items()}
+
+
+def test_stesso_docente_mai_sostituito_in_settimane_consecutive():
+    # X e Y alternati: l'unica soluzione valida è X Y X Y (o Y X Y X)
+    gen = Gen(['A'], {'C': ['A']}, {'A': [(w, o, d) for w in range(4) for o, d in ((1, 'X'), (2, 'Y'))]})
+    individuo = gen.risolvi()
+    assert gen.verifica_vincoli(individuo)
+    for settimane in _sostituzioni(gen, individuo).values():
+        assert all(b - a > 1 for a, b in zip(settimane, settimane[1:]))
+
+
+def test_senza_alternative_il_vincolo_duro_rende_il_modello_impossibile(caplog):
+    gen = Gen(['A'], {'C': ['A']}, {'A': [(w, 1, 'X') for w in range(3)]})
+    with pytest.raises(SystemExit) as errore:
+        gen.risolvi()
+    assert errore.value.code == 1
+
+
+def test_verifica_vincoli_rifiuta_sostituzioni_consecutive():
+    gen = Gen(['A'], {'C': ['A']}, {'A': [(w, 1, 'X') for w in range(2)] + [(w, 2, 'Y') for w in range(2)]})
+    assert not gen.verifica_vincoli({'A_0_1': 'C', 'A_1_1': 'C'})
+    assert gen.verifica_vincoli({'A_0_1': 'C', 'A_1_2': 'C'})
+
+
+@pytest.mark.parametrize('settimane, attesa', [((0, 1), None), ((0, 2), 5), ((0, 3), 2), ((0, 4), 0)])
+def test_penalita_ripetizioni_graduata_con_la_distanza(settimane, attesa):
+    gen = Gen(['A'], {'C': ['A']}, {'A': [(w, 1, 'X') for w in range(5)]})
+    individuo = {f'A_{w}_1': 'C' for w in settimane}
+    if attesa is None:
+        assert gen._ripetizioni_consecutive(individuo)
+    else:
+        assert not gen._ripetizioni_consecutive(individuo)
+        assert gen._penalita_ripetizioni(individuo) == attesa
+
+
+def test_il_costo_soft_allontana_le_sostituzioni_dello_stesso_docente():
+    # 5 settimane e 3 docenti: X e Y sono sostituiti due volte (Z una). Senza ripetizioni a distanza 2 la penalità
+    # minima è 4: X e Y a distanza 3 (settimane 0-3 e 1-4)
+    gen = Gen(['A'], {'C': ['A']}, {'A': [(w, o, d) for w in range(5) for o, d in enumerate('XYZ', 1)]})
+    gen.gap_relativo = 1e-6  # la penalità è sotto la tolleranza di default (0,5% della fitness)
+    individuo = gen.risolvi()
+    assert gen.verifica_vincoli(individuo)
+    assert gen._penalita_ripetizioni(individuo) == 4
+
+
+def test_settimane_in_ordine_cronologico_anche_a_cavallo_d_anno():
+    # i numeri ISO ripartono da 1 a gennaio: la distanza va misurata sull'ordine delle date, non sul numero
+    gen = Gen(['A'], {'C': ['A']}, {'A': [(w, 1, 'X') for w in range(3)]})
+    gen.slots_by_key['A_0_1']['SETTIMANA'], gen.slots_by_key['A_1_1']['SETTIMANA'] = 52, 1
+    gen.slots_by_key['A_1_1']['DATA'] = gen.slots_by_key['A_0_1']['DATA'] + timedelta(weeks=1)
+    gen.slots_by_key['A_2_1']['SETTIMANA'] = 2
+    gen.slots_by_key['A_2_1']['DATA'] = gen.slots_by_key['A_0_1']['DATA'] + timedelta(weeks=2)
+    gen._precalcola_lookups()
+    assert gen._ripetizioni_consecutive({'A_0_1': 'C', 'A_1_1': 'C'})
+    assert gen._penalita_ripetizioni({'A_0_1': 'C', 'A_2_1': 'C'}) == 5
